@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Columbus Code Enforcement Inspection</title>
+    <style>
+        * {
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 10px;
+            background-color: #f5f5f5;
+            -webkit-text-size-adjust: 100%;
+        }
+        
+        .container {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #003366;
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        
+        .section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+        
+        .section h3 {
+            color: #003366;
+            margin-top: 0;
+            border-bottom: 2px solid #003366;
+            padding-bottom: 5px;
+            font-size: 18px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #333;
+            font-size: 16px;
+        }
+        
+        input[type="text"], 
+        input[type="date"], 
+        select, 
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        
+        /* Prevent iOS zoom on focus */
+        input, select, textarea {
+            font-size: 16px !important;
+        }
+        
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+        }
+        
+        .court-property-section {
+            background: #e8f4f8;
+            border: 2px solid #003366;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .court-property-section h3 {
+            color: #003366;
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px 0;
+        }
+        
+        .checkbox-container input[type="checkbox"] {
+            width: 24px;
+            height: 24px;
+            margin-right: 12px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        
+        .checkbox-container label {
+            margin-bottom: 0;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1.4;
+        }
+        
+        .violation-item {
+            background: white;
+            margin-bottom: 15px;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #003366;
+        }
+        
+        .violation-code {
+            font-weight: bold;
+            color: #003366;
+            font-size: 15px;
+            line-height: 1.4;
+        }
+        
+        .violation-desc {
+            color: #666;
+            font-size: 13px;
+            margin: 5px 0;
+            line-height: 1.4;
+        }
+        
+        .location-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        
+        .location-btn {
+            padding: 12px 18px;
+            border: 2px solid #ddd;
+            background: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+            -webkit-user-select: none;
+            user-select: none;
+            min-width: 70px;
+            text-align: center;
+            font-weight: 500;
+        }
+        
+        .location-btn:active {
+            transform: scale(0.95);
+        }
+        
+        .location-btn.active {
+            background: #003366;
+            color: white;
+            border-color: #003366;
+        }
+        
+        .generate-btn {
+            background: #28a745;
+            color: white;
+            padding: 18px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 18px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 20px;
+            font-weight: bold;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        
+        .generate-btn:active {
+            background: #1e7e34;
+            transform: scale(0.98);
+        }
+        
+        .report-output {
+            background: white;
+            border: 2px solid #003366;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: 'Times New Roman', serif;
+            line-height: 1.6;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        /* Mobile-specific adjustments */
+        @media (max-width: 600px) {
+            body {
+                padding: 5px;
+            }
+            
+            .container {
+                padding: 12px;
+            }
+            
+            h1 {
+                font-size: 20px;
+                margin-bottom: 15px;
+            }
+            
+            .section {
+                padding: 12px;
+                margin-bottom: 15px;
+            }
+            
+            .section h3 {
+                font-size: 16px;
+            }
+            
+            .violation-item {
+                padding: 12px;
+                margin-bottom: 12px;
+            }
+            
+            .location-btn {
+                padding: 10px 14px;
+                font-size: 13px;
+                min-width: 60px;
+            }
+            
+            .generate-btn {
+                padding: 16px 20px;
+                font-size: 16px;
+            }
+        }
+        
+        @media print {
+            .container { box-shadow: none; }
+            .generate-btn { display: none; }
+            body { padding: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Columbus Code Enforcement Inspection</h1>
+        
+        <!-- Court Property Section -->
+        <div class="court-property-section">
+            <h3>Court Property Information</h3>
+            <div class="checkbox-container">
+                <input type="checkbox" id="isCourtProperty" onchange="toggleCourtViolations()">
+                <label for="isCourtProperty">Is this a court property?</label>
+            </div>
+            <div id="courtViolationsSection" class="form-group hidden">
+                <label>If so, please paste the violations from line item #5 on all relevant affidavits:</label>
+                <textarea id="courtViolations" placeholder="Paste the violations from the affidavit here..."></textarea>
+            </div>
+        </div>
+        
+        <!-- Basic Information -->
+        <div class="section">
+            <h3>Inspection Information</h3>
+            <div class="form-group">
+                <label>Inspector Name:</label>
+                <input type="text" id="inspectorName" placeholder="Enter inspector name">
+            </div>
+            <div class="form-group">
+                <label>Property Address:</label>
+                <input type="text" id="propertyAddress" placeholder="Enter property address">
+            </div>
+            <div class="form-group">
+                <label>Parcel Number:</label>
+                <input type="text" id="parcelNumber" placeholder="Enter parcel number">
+            </div>
+            <div class="form-group">
+                <label>Inspection Date:</label>
+                <input type="date" id="inspectionDate">
+            </div>
+            <div class="form-group">
+                <label>Property Status:</label>
+                <select id="propertyStatus">
+                    <option value="">Select status</option>
+                    <option value="Vacant">Vacant</option>
+                    <option value="Occupied">Occupied</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Violations -->
+        <div class="section">
+            <h3>Observed Violations</h3>
+            
+            <!-- Title 47 - Vacant Building -->
+            <div class="violation-item">
+                <div class="violation-code">4707.01 - Vacant Building (General)</div>
+                <div class="violation-desc">Vacant and not properly secured/maintained</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('4707.01', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('4707.01', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('4707.01', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('4707.01', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">4707.03 - Vacant Building (Security)</div>
+                <div class="violation-desc">Unsecured openings, violations of Title 45, 7</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('4707.03', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('4707.03', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('4707.03', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('4707.03', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <!-- Title 45 - Housing Code -->
+            <div class="violation-item">
+                <div class="violation-code">4525.01 - Structure Not Weathertight</div>
+                <div class="violation-desc">Damaged roof, holes, openings allowing weather</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('4525.01', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.01', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.01', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.01', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">4525.08 - Rain Carriers</div>
+                <div class="violation-desc">Missing, damaged, or clogged gutters/downspouts</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('4525.08', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.08', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.08', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.08', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">4525.11 - Primary Structure Exterior</div>
+                <div class="violation-desc">Bare wood, damaged siding, soffits, fascia, trim</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('4525.11-primary', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.11-primary', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.11-primary', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.11-primary', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">4525.02 - Windows and Doors</div>
+                <div class="violation-desc">Broken window glazing or doors</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('4525.02', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.02', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.02', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.02', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">4525.03 - Stairs and Porches</div>
+                <div class="violation-desc">Damaged steps, missing/loose handrails, balusters</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('4525.03', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.03', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.03', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.03', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">4523.04 - Electrical Components</div>
+                <div class="violation-desc">Exposed wiring, damaged fixtures, hazards</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('4523.04', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('4523.04', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('4523.04', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('4523.04', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">4525.11 - Accessory Structures</div>
+                <div class="violation-desc">Sheds, garages - damaged roof, siding, components</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('4525.11-accessory', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.11-accessory', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.11-accessory', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.11-accessory', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">4525.13 - Fences and Gates</div>
+                <div class="violation-desc">Damaged, leaning, missing sections, poor condition</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('4525.13', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.13', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.13', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.13', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">4525.14 - Concrete and Masonry</div>
+                <div class="violation-desc">Sidewalks, driveways - cracks, mortar voids, damage</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('4525.14', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.14', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.14', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.14', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">4525.11 - Yard Hazards</div>
+                <div class="violation-desc">Low wires, dead or dying trees, holes, unsafe conditions</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('4525.11-yard', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.11-yard', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.11-yard', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.11-yard', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">4525.15 - Graffiti</div>
+                <div class="violation-desc">Tags, markings, drawings on any visible surface</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('4525.15', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.15', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.15', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('4525.15', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <!-- Title 7 - Health & Safety -->
+            <div class="violation-item">
+                <div class="violation-code">709.03 - Vegetation Overgrowth</div>
+                <div class="violation-desc">Grass >12", weeds, noxious plants, brush</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('709.03', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('709.03', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('709.03', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('709.03', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">707.03 - Solid Waste</div>
+                <div class="violation-desc">Trash, debris, furniture, appliances, litter</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('707.03', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('707.03', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('707.03', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('707.03', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">705.03 - Unsanitary Conditions</div>
+                <div class="violation-desc">Standing water, unclean areas, health hazards</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('705.03', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('705.03', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('705.03', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('705.03', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <!-- Title 33 - Zoning -->
+            <div class="violation-item">
+                <div class="violation-code">3332.289 - Prohibited Exterior Storage</div>
+                <div class="violation-desc">Junk, salvage, wood, plastic, tires, etc</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('3332.289', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('3332.289', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('3332.289', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('3332.289', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">3312.35 - Prohibited Parking</div>
+                <div class="violation-desc">Boat, trailer, commercial type vehicle</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('3312.35', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('3312.35', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('3312.35', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('3312.35', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">3312.37 - Inoperable Vehicle</div>
+                <div class="violation-desc">Flat tires, broken windows, expired tags</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('3312.37', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('3312.37', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('3312.37', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('3312.37', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">3312.43 - Parking on Unimproved Surface</div>
+                <div class="violation-desc">Vehicles on grass, dirt, gravel, unpaved areas</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('3312.43', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('3312.43', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('3312.43', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('3312.43', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">3305.01 - Zoning Clearance Required</div>
+                <div class="violation-desc">Change of use, additions, modifications</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('3305.01', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('3305.01', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('3305.01', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('3305.01', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+
+            <div class="violation-item">
+                <div class="violation-code">3305.03 - Out of Compliance with Site Plan</div>
+                <div class="violation-desc">Property doesn't match approved site plan on file</div>
+                <div class="location-buttons">
+                    <button class="location-btn" onclick="toggleLocation('3305.03', 'Front')">Front</button>
+                    <button class="location-btn" onclick="toggleLocation('3305.03', 'Rear')">Rear</button>
+                    <button class="location-btn" onclick="toggleLocation('3305.03', 'Side')">Side</button>
+                    <button class="location-btn" onclick="toggleLocation('3305.03', 'Multiple')">Multiple</button>
+                </div>
+            </div>
+        </div>
+
+        <button class="generate-btn" onclick="generateReport()">Generate Inspection Report</button>
+        
+        <div id="reportOutput" class="report-output hidden"></div>
+    </div>
+
+    <script>
+        let selectedViolations = {};
+
+        function toggleCourtViolations() {
+            const checkbox = document.getElementById('isCourtProperty');
+            const courtViolationsSection = document.getElementById('courtViolationsSection');
+            
+            if (checkbox.checked) {
+                courtViolationsSection.classList.remove('hidden');
+            } else {
+                courtViolationsSection.classList.add('hidden');
+                document.getElementById('courtViolations').value = '';
+            }
+        }
+
+        function toggleLocation(code, location) {
+            if (!selectedViolations[code]) {
+                selectedViolations[code] = [];
+            }
+            
+            const index = selectedViolations[code].indexOf(location);
+            if (index === -1) {
+                selectedViolations[code].push(location);
+            } else {
+                selectedViolations[code].splice(index, 1);
+            }
+            
+            if (selectedViolations[code].length === 0) {
+                delete selectedViolations[code];
+            }
+            
+            updateButtonStates();
+        }
+
+        function updateButtonStates() {
+            document.querySelectorAll('.location-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            Object.keys(selectedViolations).forEach(code => {
+                selectedViolations[code].forEach(location => {
+                    const btn = Array.from(document.querySelectorAll('.location-btn')).find(b => 
+                        b.onclick.toString().includes(`'${code}'`) && 
+                        b.onclick.toString().includes(`'${location}'`)
+                    );
+                    if (btn) btn.classList.add('active');
+                });
+            });
+        }
+
+        function generateReport() {
+            const inspectorName = document.getElementById('inspectorName').value;
+            const propertyAddress = document.getElementById('propertyAddress').value;
+            const parcelNumber = document.getElementById('parcelNumber').value;
+            const inspectionDate = document.getElementById('inspectionDate').value;
+            const propertyStatus = document.getElementById('propertyStatus').value;
+            const isCourtProperty = document.getElementById('isCourtProperty').checked;
+            const courtViolations = document.getElementById('courtViolations').value;
+
+            if (!inspectorName || !propertyAddress || !parcelNumber || !inspectionDate || !propertyStatus) {
+                alert('Please fill in all required fields.');
+                return;
+            }
+
+            let report = `COLUMBUS CODE ENFORCEMENT INSPECTION REPORT
+
+Date: ${inspectionDate}
+Inspector: ${inspectorName}
+Property Address: ${propertyAddress}
+Parcel Number: ${parcelNumber}
+Property Status: ${propertyStatus}
+
+`;
+
+            // Add court property violations if applicable
+            if (isCourtProperty && courtViolations.trim()) {
+                report += `COURT PROPERTY - AFFIDAVIT VIOLATIONS:
+
+The following violations were noted on the affidavit for this case:
+
+${courtViolations}
+
+`;
+            }
+
+            report += `INSPECTION FINDINGS:
+
+On ${inspectionDate}, Code Enforcement Officer ${inspectorName} conducted an inspection of the property located at ${propertyAddress} (Parcel #${parcelNumber}) and observed the following conditions requiring correction:
+
+`;
+
+            // Group violations by title
+            const title47 = [];
+            const title45 = [];
+            const title7 = [];
+            const title33 = [];
+
+            const violationDescriptions = {
+                '4707.01': 'Vacant building maintenance violations - Property not properly secured and maintained as required',
+                '4707.03': 'Vacant building security violations - Structure not secured in accordance with required standards',
+                '4525.01': 'Structural integrity issues - Foundation, floors, walls, or roof not substantially weathertight',
+                '4525.08': 'Rain carrier deficiencies - Gutters and downspouts not properly maintained',
+                '4525.11-primary': 'Exterior maintenance violations - Primary structure exterior components not properly maintained',
+                '4525.02': 'Window/door maintenance violations - Windows and doors not maintained in sound working condition',
+                '4525.03': 'Stairway/porch safety violations - Stairs and porches not maintained in safe condition',
+                '4523.04': 'Electrical system violations - Electrical components not properly installed or maintained',
+                '4525.11-accessory': 'Accessory structure violations - Accessory buildings not properly maintained',
+                '4525.13': 'Fence maintenance violations - Fences and gates not maintained in good condition',
+                '4525.14': 'Concrete/masonry deficiencies - Concrete and masonry work not sound or in good repair',
+                '4525.11-yard': 'Yard hazard violations - Various hazardous conditions observed on premises',
+                '4525.15': 'Graffiti violations - Graffiti present on structures requiring removal',
+                '709.03': 'Excessive vegetation growth - Grass, weeds, and vegetation exceeding permitted heights',
+                '707.03': 'Solid waste accumulation - Various solid waste materials observed on premises',
+                '705.03': 'Unsanitary conditions - Property not maintained in clean, sanitary condition',
+                '3332.289': 'Prohibited outdoor storage violations - Unauthorized materials stored on premises',
+                '3312.35': 'Prohibited vehicle parking violations - Unauthorized vehicles parked on property',
+                '3312.37': 'Inoperable vehicle violations - Inoperable vehicles present on premises',
+                '3312.43': 'Parking surface violations - Vehicles parked on unimproved surfaces',
+                '3305.01': 'Zoning clearance violations - Modifications made without required permits',
+                '3305.03': 'Site plan compliance violations - Property not in compliance with approved site plan'
+            };
+
+            Object.keys(selectedViolations).forEach(code => {
+                const locations = selectedViolations[code].join(', ');
+                const description = violationDescriptions[code];
+                const violationText = `${description} (${locations} areas observed)`;
+
+                if (code.startsWith('47')) {
+                    title47.push(violationText);
+                } else if (code.startsWith('45') || code.startsWith('452')) {
+                    title45.push(violationText);
+                } else if (code.startsWith('7')) {
+                    title7.push(violationText);
+                } else if (code.startsWith('33')) {
+                    title33.push(violationText);
+                }
+            });
+
+            if (title47.length > 0) {
+                report += `TITLE 47 - NUISANCE ABATEMENT CODE VIOLATIONS:
+${title47.map(v => `• ${v}`).join('\n')}
+
+`;
+            }
+
+            if (title45.length > 0) {
+                report += `TITLE 45 - HOUSING CODE VIOLATIONS:
+${title45.map(v => `• ${v}`).join('\n')}
+
+`;
+            }
+
+            if (title7.length > 0) {
+                report += `TITLE 7 - HEALTH, SANITATION & SAFETY CODE VIOLATIONS:
+${title7.map(v => `• ${v}`).join('\n')}
+
+`;
+            }
+
+            if (title33.length > 0) {
+                report += `TITLE 33 - ZONING CODE VIOLATIONS:
+${title33.map(v => `• ${v}`).join('\n')}
+
+`;
+            }
+
+            if (Object.keys(selectedViolations).length === 0) {
+                report += `No violations observed during this inspection.
+
+`;
+            }
+
+            report += `This inspection was conducted in accordance with Columbus City Code enforcement procedures.
+
+Inspector: ${inspectorName}
+Date: ${inspectionDate}`;
+
+            document.getElementById('reportOutput').textContent = report;
+            document.getElementById('reportOutput').classList.remove('hidden');
+            
+            // Scroll to report
+            document.getElementById('reportOutput').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Set today's date as default
+        document.getElementById('inspectionDate').valueAsDate = new Date();
+    </script>
+</body>
+</html>

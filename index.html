@@ -1,755 +1,939 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>Columbus Code Enforcement Inspection</title>
-    <style>
-        * {
-            -webkit-tap-highlight-color: transparent;
-            -webkit-touch-callout: none;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 10px;
-            background-color: #f5f5f5;
-            -webkit-text-size-adjust: 100%;
-        }
-        
-        .container {
-            background: white;
-            padding: 15px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        h1 {
-            color: #003366;
-            text-align: center;
-            margin-bottom: 20px;
-            font-size: 24px;
-        }
-        
-        .section {
-            margin-bottom: 20px;
-            padding: 15px;
-            background: #f9f9f9;
-            border-radius: 5px;
-        }
-        
-        .section h3 {
-            color: #003366;
-            margin-top: 0;
-            border-bottom: 2px solid #003366;
-            padding-bottom: 5px;
-            font-size: 18px;
-        }
-        
-        .form-group {
-            margin-bottom: 15px;
-        }
-        
-        label {
-            display: block;
-            font-weight: bold;
-            margin-bottom: 5px;
-            color: #333;
-            font-size: 16px;
-        }
-        
-        input[type="text"], 
-        input[type="date"], 
-        select, 
-        textarea {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 16px;
-            -webkit-appearance: none;
-            appearance: none;
-        }
-        
-        /* Prevent iOS zoom on focus */
-        input, select, textarea {
-            font-size: 16px !important;
-        }
-        
-        textarea {
-            min-height: 100px;
-            resize: vertical;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-        }
-        
-        .court-property-section {
-            background: #e8f4f8;
-            border: 2px solid #003366;
-            border-radius: 5px;
-            padding: 15px;
-            margin-bottom: 20px;
-        }
-        
-        .court-property-section h3 {
-            color: #003366;
-            margin-top: 0;
-            margin-bottom: 15px;
-            font-size: 18px;
-        }
-        
-        .checkbox-container {
-            display: flex;
-            align-items: center;
-            margin-bottom: 15px;
-            padding: 10px 0;
-        }
-        
-        .checkbox-container input[type="checkbox"] {
-            width: 24px;
-            height: 24px;
-            margin-right: 12px;
-            cursor: pointer;
-            flex-shrink: 0;
-        }
-        
-        .checkbox-container label {
-            margin-bottom: 0;
-            cursor: pointer;
-            font-size: 16px;
-            line-height: 1.4;
-        }
-        
-        .violation-item {
-            background: white;
-            margin-bottom: 15px;
-            padding: 15px;
-            border-radius: 5px;
-            border-left: 4px solid #003366;
-        }
-        
-        .violation-code {
-            font-weight: bold;
-            color: #003366;
-            font-size: 15px;
-            line-height: 1.4;
-        }
-        
-        .violation-desc {
-            color: #666;
-            font-size: 13px;
-            margin: 5px 0;
-            line-height: 1.4;
-        }
-        
-        .location-buttons {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-top: 10px;
-        }
-        
-        .location-btn {
-            padding: 12px 18px;
-            border: 2px solid #ddd;
-            background: white;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: all 0.2s;
-            -webkit-user-select: none;
-            user-select: none;
-            min-width: 70px;
-            text-align: center;
-            font-weight: 500;
-        }
-        
-        .location-btn:active {
-            transform: scale(0.95);
-        }
-        
-        .location-btn.active {
-            background: #003366;
-            color: white;
-            border-color: #003366;
-        }
-        
-        .generate-btn {
-            background: #28a745;
-            color: white;
-            padding: 18px 30px;
-            border: none;
-            border-radius: 5px;
-            font-size: 18px;
-            cursor: pointer;
-            width: 100%;
-            margin-top: 20px;
-            font-weight: bold;
-            -webkit-appearance: none;
-            appearance: none;
-        }
-        
-        .generate-btn:active {
-            background: #1e7e34;
-            transform: scale(0.98);
-        }
-        
-        .report-output {
-            background: white;
-            border: 2px solid #003366;
-            padding: 15px;
-            margin-top: 20px;
-            border-radius: 5px;
-            white-space: pre-wrap;
-            font-family: 'Times New Roman', serif;
-            line-height: 1.6;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-        }
-        
-        .hidden {
-            display: none;
-        }
-        
-        /* Mobile-specific adjustments */
-        @media (max-width: 600px) {
-            body {
-                padding: 5px;
-            }
-            
-            .container {
-                padding: 12px;
-            }
-            
-            h1 {
-                font-size: 20px;
-                margin-bottom: 15px;
-            }
-            
-            .section {
-                padding: 12px;
-                margin-bottom: 15px;
-            }
-            
-            .section h3 {
-                font-size: 16px;
-            }
-            
-            .violation-item {
-                padding: 12px;
-                margin-bottom: 12px;
-            }
-            
-            .location-btn {
-                padding: 10px 14px;
-                font-size: 13px;
-                min-width: 60px;
-            }
-            
-            .generate-btn {
-                padding: 16px 20px;
-                font-size: 16px;
-            }
-        }
-        
-        @media print {
-            .container { box-shadow: none; }
-            .generate-btn { display: none; }
-            body { padding: 0; }
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Code Enforcement Photo Labeler</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  ::selection { background: #7c3aed44; }
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+    background: #06060c;
+    color: #e0e0e0;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+
+  /* Header */
+  .header {
+    border-bottom: 1px solid #111;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    position: sticky; top: 0; z-index: 100;
+    background: #06060c;
+    backdrop-filter: blur(8px);
+  }
+  .header-left { display: flex; align-items: center; gap: 10px; }
+  .header-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, #7c3aed, #6366f1);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .header-title { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; color: #f0f0f0; }
+  .header-sub { font-size: 10px; color: #555; letter-spacing: 0.5px; }
+
+  .progress-wrap { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+  .progress-text { color: #666; white-space: nowrap; }
+  .progress-bar { width: 80px; height: 4px; background: #1a1a2e; border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; background: #7c3aed; border-radius: 2px; transition: all 0.4s ease; }
+  .progress-fill.done { background: #4ade80; }
+
+  /* Main */
+  .main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+
+  /* Form */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .form-label {
+    font-size: 11px; color: #555; text-transform: uppercase;
+    letter-spacing: 1px; display: block; margin-bottom: 4px;
+  }
+  .form-input {
+    width: 100%; background: #0a0a15; border: 1px solid #1a1a2e;
+    color: #e0e0e0; padding: 12px 14px; border-radius: 8px;
+    font-size: 16px; font-family: inherit;
+    -webkit-appearance: none; appearance: none;
+  }
+  .form-input:focus { outline: none; border-color: #6366f1; }
+  .form-input.mono { font-family: 'JetBrains Mono', monospace; font-size: 14px; }
+  .form-notes {
+    width: 100%; background: #0a0a15; border: 1px solid #1a1a2e;
+    color: #e0e0e0; padding: 12px 14px; border-radius: 8px;
+    font-size: 14px; font-family: inherit; resize: vertical;
+    -webkit-appearance: none; appearance: none;
+  }
+  .form-notes:focus { outline: none; border-color: #6366f1; }
+
+  /* Collapsible sections */
+  .section-toggle {
+    background: #0a0a15; border: 1px solid #1a1a2e; border-radius: 8px;
+    padding: 14px 16px; margin-bottom: 12px; cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center;
+    -webkit-tap-highlight-color: transparent; user-select: none;
+  }
+  .section-toggle:active { background: #111128; }
+  .section-toggle-label { font-size: 13px; font-weight: 600; color: #999; }
+  .section-toggle-arrow { color: #555; font-size: 12px; transition: transform 0.2s; }
+  .section-toggle-arrow.open { transform: rotate(180deg); }
+  .section-content { overflow: hidden; transition: max-height 0.3s ease; }
+  .section-content.collapsed { max-height: 0 !important; }
+
+  /* API Key Section */
+  .api-section {
+    background: #0a0a15; border: 1px solid #1a1a2e; border-radius: 8px;
+    padding: 14px 16px; margin-bottom: 16px;
+  }
+  .api-section.connected { border-color: #166534; background: #0a1a0a; }
+  .api-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .api-row .form-input { flex: 1; min-width: 0; }
+  .api-status { font-size: 12px; margin-top: 6px; }
+  .api-status.ok { color: #4ade80; }
+  .api-status.err { color: #f87171; }
+  .api-note { font-size: 11px; color: #444; margin-top: 6px; line-height: 1.5; }
+  .api-note a { color: #7c3aed; }
+
+  /* Upload */
+  .upload-zone {
+    border: 2px dashed #1a1a2e; border-radius: 12px; padding: 32px 16px;
+    text-align: center; cursor: pointer; margin-bottom: 16px;
+    background: #08080e; transition: border-color 0.2s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .upload-zone:hover, .upload-zone:active, .upload-zone.dragover { border-color: #7c3aed; }
+  .upload-icon { font-size: 36px; margin-bottom: 8px; }
+  .upload-text { font-size: 15px; color: #888; margin-bottom: 4px; }
+  .upload-hint { font-size: 12px; color: #444; }
+
+  /* Action Bar */
+  .action-bar {
+    display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;
+    position: sticky; top: 56px; z-index: 90;
+    background: #06060c; padding: 10px 0; border-bottom: 1px solid #111;
+  }
+  .btn {
+    border: none; border-radius: 8px; padding: 12px 20px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: inherit; letter-spacing: 0.3px; transition: opacity 0.2s;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    white-space: nowrap;
+  }
+  .btn:active { opacity: 0.7; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: linear-gradient(135deg, #7c3aed, #6366f1); color: white; }
+  .btn-approve { background: #14532d; color: #4ade80; }
+  .btn-export { background: #1a1a2e; color: #666; }
+  .btn-export.ready { background: #1e3a5f; color: #60a5fa; }
+  .btn-small {
+    border: none; border-radius: 6px; padding: 8px 14px;
+    font-size: 13px; cursor: pointer; font-family: inherit; font-weight: 600;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
+  .photo-count { margin-left: auto; color: #444; font-size: 13px; }
+
+  /* Photo Cards */
+  .photo-list { display: flex; flex-direction: column; gap: 12px; }
+  .photo-card {
+    background: #0a0a0f; border: 1px solid #1a1a2e;
+    border-radius: 10px; overflow: hidden; transition: all 0.3s ease;
+  }
+  .photo-card.all-approved { background: #0a1a0a; border-color: #1a3a1a; }
+  .photo-card-inner { display: flex; flex-direction: column; }
+
+  .photo-img-wrap {
+    width: 100%; height: 220px; flex-shrink: 0;
+    position: relative; overflow: hidden;
+  }
+  .photo-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .photo-number {
+    position: absolute; top: 10px; left: 10px;
+    background: rgba(0,0,0,0.8); color: #e0e0e0;
+    padding: 4px 10px; border-radius: 4px;
+    font-size: 13px; font-weight: 600; letter-spacing: 0.5px;
+  }
+  .photo-approved-badge {
+    position: absolute; top: 10px; right: 10px;
+    background: #166534; color: #4ade80;
+    padding: 4px 10px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  }
+  .photo-remove {
+    position: absolute; bottom: 10px; right: 10px;
+    background: rgba(80,20,20,0.85); color: #f87171;
+    border: none; border-radius: 6px; padding: 6px 12px;
+    font-size: 12px; cursor: pointer; font-weight: 600;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .labels-panel { flex: 1; padding: 14px 16px; min-width: 0; }
+
+  .spinner {
+    width: 18px; height: 18px; border: 2px solid #333;
+    border-top: 2px solid #6366f1; border-radius: 50%;
+    animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .analyzing-msg { display: flex; align-items: center; gap: 12px; padding: 16px 0; color: #8b8ba0; font-size: 14px; }
+  .error-msg {
+    color: #f87171; font-size: 13px; padding: 12px;
+    background: #1a0a0a; border-radius: 6px; margin-bottom: 8px;
+    line-height: 1.5;
+  }
+  .empty-msg { color: #555; font-size: 13px; padding: 16px 0; }
+
+  /* Label rows */
+  .label-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 10px 0; border-bottom: 1px solid #111;
+  }
+  .label-checkbox {
+    width: 28px; height: 28px; min-width: 28px; border-radius: 4px;
+    border: 2px solid #444; background: transparent; cursor: pointer;
+    font-size: 14px; display: flex; align-items: center; justify-content: center;
+    margin-top: 0; color: transparent; flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
+  .label-checkbox.checked { border-color: #4ade80; background: #166534; color: #4ade80; }
+  .label-content { flex: 1; min-width: 0; line-height: 1.5; }
+  .label-code { color: #a78bfa; font-size: 13px; font-weight: 600; }
+  .label-sep { color: #555; margin: 0 4px; }
+  .label-desc { color: #c8c8d8; font-size: 13px; }
+  .label-actions { display: flex; gap: 2px; flex-shrink: 0; }
+  .label-actions button {
+    background: none; border: none; cursor: pointer;
+    font-size: 13px; padding: 6px 8px; font-family: inherit;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
+  .label-edit-btn { color: #666; }
+  .label-remove-btn { color: #662222; }
+
+  /* Edit row */
+  .edit-row {
+    display: flex; gap: 6px; align-items: flex-start; flex-wrap: wrap;
+    background: #111128; padding: 10px; border-radius: 6px; margin-bottom: 6px;
+  }
+  .edit-input {
+    background: #0a0a1a; border: 1px solid #2a2a4e; color: #e0e0e0;
+    padding: 10px 12px; border-radius: 6px; font-size: 14px;
+    -webkit-appearance: none; appearance: none;
+  }
+  .edit-input:focus { outline: none; border-color: #6366f1; }
+  .edit-code { width: 100%; }
+  .edit-desc { width: 100%; }
+  .edit-actions { display: flex; gap: 6px; width: 100%; }
+  .edit-save { background: #166534; color: #4ade80; flex: 1; }
+  .edit-cancel { background: #333; color: #999; flex: 1; }
+
+  /* Add label */
+  .add-row {
+    display: flex; gap: 6px; flex-direction: column;
+    margin-top: 8px; padding: 12px; background: #111128; border-radius: 6px;
+  }
+  .add-select {
+    background: #0a0a1a; border: 1px solid #2a2a4e; color: #e0e0e0;
+    padding: 10px 12px; border-radius: 6px; font-size: 14px; width: 100%;
+    -webkit-appearance: none; appearance: none;
+  }
+  .add-select:focus { outline: none; border-color: #6366f1; }
+  .add-actions { display: flex; gap: 6px; }
+
+  .label-footer { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn-add-label {
+    background: none; border: 1px dashed #2a2a4e; color: #666;
+    border-radius: 6px; padding: 8px 14px; font-size: 13px; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn-approve-all {
+    background: #14532d; border: none; color: #4ade80; border-radius: 6px;
+    padding: 8px 14px; font-size: 13px; cursor: pointer; font-weight: 600;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn-reanalyze {
+    background: none; border: 1px solid #2a2a4e; color: #666;
+    border-radius: 6px; padding: 8px 14px; font-size: 13px; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Export Preview */
+  .export-section {
+    margin-top: 24px; background: #08080e;
+    border: 1px solid #1a1a2e; border-radius: 10px; overflow: hidden;
+  }
+  .export-header {
+    padding: 12px 16px; border-bottom: 1px solid #1a1a2e;
+    font-size: 12px; color: #666; text-transform: uppercase;
+    letter-spacing: 1px; font-weight: 600;
+  }
+  .export-pre {
+    padding: 16px; margin: 0; font-size: 11px;
+    font-family: 'JetBrains Mono', monospace; color: #888;
+    line-height: 1.7; overflow-x: auto; white-space: pre-wrap;
+    max-height: 300px; overflow-y: auto;
+  }
+
+  .footer {
+    margin-top: 32px; padding: 20px 0;
+    border-top: 1px solid #111; font-size: 11px;
+    color: #333; text-align: center; line-height: 1.5;
+  }
+
+  .hidden { display: none; }
+
+  /* =========== TABLET+ (768px) =========== */
+  @media (min-width: 768px) {
+    .header { padding: 16px 24px; }
+    .main { padding: 24px; }
+    .form-grid { grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .photo-card-inner { flex-direction: row; }
+    .photo-img-wrap { width: 340px; height: auto; min-height: 240px; }
+    .labels-panel { padding: 16px 20px; }
+    .edit-code { width: 180px; }
+    .edit-desc { width: auto; flex: 1; min-width: 200px; }
+    .edit-actions { width: auto; }
+    .edit-row { flex-wrap: nowrap; }
+    .add-row { flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
+    .add-select { max-width: 280px; }
+    .label-checkbox { width: 22px; height: 22px; min-width: 22px; font-size: 12px; }
+    .progress-bar { width: 120px; }
+    .action-bar { top: 58px; }
+  }
+
+  /* =========== DESKTOP (1024px) =========== */
+  @media (min-width: 1024px) {
+    .photo-img-wrap { width: 380px; }
+    .upload-zone { padding: 40px 20px; }
+  }
+</style>
 </head>
 <body>
-    <div class="container">
-        <h1>Columbus Code Enforcement Inspection</h1>
-        
-        <!-- Court Property Section -->
-        <div class="court-property-section">
-            <h3>Court Property Information</h3>
-            <div class="checkbox-container">
-                <input type="checkbox" id="isCourtProperty" onchange="toggleCourtViolations()">
-                <label for="isCourtProperty">Is this a court property?</label>
-            </div>
-            <div id="courtViolationsSection" class="form-group hidden">
-                <label>If so, please paste the violations from line item #5 on all relevant affidavits:</label>
-                <textarea id="courtViolations" placeholder="Paste the violations from the affidavit here..."></textarea>
-            </div>
-        </div>
-        
-        <!-- Basic Information -->
-        <div class="section">
-            <h3>Inspection Information</h3>
-            <div class="form-group">
-                <label>Inspector Name:</label>
-                <input type="text" id="inspectorName" placeholder="Enter inspector name">
-            </div>
-            <div class="form-group">
-                <label>Property Address:</label>
-                <input type="text" id="propertyAddress" placeholder="Enter property address">
-            </div>
-            <div class="form-group">
-                <label>Parcel Number:</label>
-                <input type="text" id="parcelNumber" placeholder="Enter parcel number">
-            </div>
-            <div class="form-group">
-                <label>Inspection Date:</label>
-                <input type="date" id="inspectionDate">
-            </div>
-            <div class="form-group">
-                <label>Property Status:</label>
-                <select id="propertyStatus">
-                    <option value="">Select status</option>
-                    <option value="Vacant">Vacant</option>
-                    <option value="Occupied">Occupied</option>
-                </select>
-            </div>
-        </div>
 
-        <!-- Violations -->
-        <div class="section">
-            <h3>Observed Violations</h3>
-            
-            <!-- Title 47 - Vacant Building -->
-            <div class="violation-item">
-                <div class="violation-code">4707.01 - Vacant Building (General)</div>
-                <div class="violation-desc">Vacant and not properly secured/maintained</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('4707.01', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('4707.01', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('4707.01', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('4707.01', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">4707.03 - Vacant Building (Security)</div>
-                <div class="violation-desc">Unsecured openings, violations of Title 45, 7</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('4707.03', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('4707.03', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('4707.03', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('4707.03', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <!-- Title 45 - Housing Code -->
-            <div class="violation-item">
-                <div class="violation-code">4525.01 - Structure Not Weathertight</div>
-                <div class="violation-desc">Damaged roof, holes, openings allowing weather</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('4525.01', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.01', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.01', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.01', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">4525.08 - Rain Carriers</div>
-                <div class="violation-desc">Missing, damaged, or clogged gutters/downspouts</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('4525.08', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.08', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.08', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.08', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">4525.11 - Primary Structure Exterior</div>
-                <div class="violation-desc">Bare wood, damaged siding, soffits, fascia, trim</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('4525.11-primary', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.11-primary', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.11-primary', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.11-primary', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">4525.02 - Windows and Doors</div>
-                <div class="violation-desc">Broken window glazing or doors</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('4525.02', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.02', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.02', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.02', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">4525.03 - Stairs and Porches</div>
-                <div class="violation-desc">Damaged steps, missing/loose handrails, balusters</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('4525.03', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.03', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.03', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.03', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">4523.04 - Electrical Components</div>
-                <div class="violation-desc">Exposed wiring, damaged fixtures, hazards</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('4523.04', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('4523.04', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('4523.04', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('4523.04', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">4525.11 - Accessory Structures</div>
-                <div class="violation-desc">Sheds, garages - damaged roof, siding, components</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('4525.11-accessory', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.11-accessory', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.11-accessory', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.11-accessory', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">4525.13 - Fences and Gates</div>
-                <div class="violation-desc">Damaged, leaning, missing sections, poor condition</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('4525.13', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.13', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.13', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.13', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">4525.14 - Concrete and Masonry</div>
-                <div class="violation-desc">Sidewalks, driveways - cracks, mortar voids, damage</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('4525.14', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.14', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.14', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.14', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">4525.11 - Yard Hazards</div>
-                <div class="violation-desc">Low wires, dead or dying trees, holes, unsafe conditions</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('4525.11-yard', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.11-yard', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.11-yard', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.11-yard', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">4525.15 - Graffiti</div>
-                <div class="violation-desc">Tags, markings, drawings on any visible surface</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('4525.15', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.15', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.15', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('4525.15', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <!-- Title 7 - Health & Safety -->
-            <div class="violation-item">
-                <div class="violation-code">709.03 - Vegetation Overgrowth</div>
-                <div class="violation-desc">Grass >12", weeds, noxious plants, brush</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('709.03', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('709.03', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('709.03', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('709.03', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">707.03 - Solid Waste</div>
-                <div class="violation-desc">Trash, debris, furniture, appliances, litter</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('707.03', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('707.03', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('707.03', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('707.03', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">705.03 - Unsanitary Conditions</div>
-                <div class="violation-desc">Standing water, unclean areas, health hazards</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('705.03', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('705.03', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('705.03', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('705.03', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <!-- Title 33 - Zoning -->
-            <div class="violation-item">
-                <div class="violation-code">3332.289 - Prohibited Exterior Storage</div>
-                <div class="violation-desc">Junk, salvage, wood, plastic, tires, etc</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('3332.289', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('3332.289', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('3332.289', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('3332.289', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">3312.35 - Prohibited Parking</div>
-                <div class="violation-desc">Boat, trailer, commercial type vehicle</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('3312.35', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('3312.35', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('3312.35', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('3312.35', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">3312.37 - Inoperable Vehicle</div>
-                <div class="violation-desc">Flat tires, broken windows, expired tags</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('3312.37', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('3312.37', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('3312.37', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('3312.37', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">3312.43 - Parking on Unimproved Surface</div>
-                <div class="violation-desc">Vehicles on grass, dirt, gravel, unpaved areas</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('3312.43', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('3312.43', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('3312.43', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('3312.43', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">3305.01 - Zoning Clearance Required</div>
-                <div class="violation-desc">Change of use, additions, modifications</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('3305.01', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('3305.01', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('3305.01', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('3305.01', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-
-            <div class="violation-item">
-                <div class="violation-code">3305.03 - Out of Compliance with Site Plan</div>
-                <div class="violation-desc">Property doesn't match approved site plan on file</div>
-                <div class="location-buttons">
-                    <button class="location-btn" onclick="toggleLocation('3305.03', 'Front')">Front</button>
-                    <button class="location-btn" onclick="toggleLocation('3305.03', 'Rear')">Rear</button>
-                    <button class="location-btn" onclick="toggleLocation('3305.03', 'Side')">Side</button>
-                    <button class="location-btn" onclick="toggleLocation('3305.03', 'Multiple')">Multiple</button>
-                </div>
-            </div>
-        </div>
-
-        <button class="generate-btn" onclick="generateReport()">Generate Inspection Report</button>
-        
-        <div id="reportOutput" class="report-output hidden"></div>
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <div class="header-icon">🏛</div>
+    <div>
+      <div class="header-title">Code Enforcement Photo Labeler</div>
+      <div class="header-sub">Columbus, OH — AI-Assisted Violation Analysis</div>
     </div>
+  </div>
+  <div class="progress-wrap" id="progressWrap" style="display:none;">
+    <span class="progress-text" id="progressText"></span>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+</div>
 
-    <script>
-        let selectedViolations = {};
+<div class="main">
 
-        function toggleCourtViolations() {
-            const checkbox = document.getElementById('isCourtProperty');
-            const courtViolationsSection = document.getElementById('courtViolationsSection');
-            
-            if (checkbox.checked) {
-                courtViolationsSection.classList.remove('hidden');
-            } else {
-                courtViolationsSection.classList.add('hidden');
-                document.getElementById('courtViolations').value = '';
-            }
+  <!-- API Key -->
+  <div class="api-section" id="apiSection">
+    <div class="form-label">Anthropic API Key</div>
+    <div class="api-row">
+      <input type="password" class="form-input" id="apiKeyInput" placeholder="sk-ant-..." style="max-width:400px;">
+      <button class="btn btn-primary" onclick="testApiKey()" style="padding:10px 16px; font-size:13px;">Connect</button>
+    </div>
+    <div class="api-status" id="apiStatus"></div>
+    <div class="api-note">Your key stays in your browser only — never sent anywhere except Anthropic's API. <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:#7c3aed;">Get a key →</a></div>
+  </div>
+
+  <!-- Case Info -->
+  <div class="form-grid">
+    <div>
+      <label class="form-label">Address</label>
+      <input class="form-input" id="addressInput" placeholder="851 Clarendon">
+    </div>
+    <div>
+      <label class="form-label">Case Number</label>
+      <input class="form-input mono" id="caseInput" placeholder="2024EVH060388">
+    </div>
+    <div>
+      <label class="form-label">Officer</label>
+      <input class="form-input" id="officerInput" value="CEO Chad Gentry">
+    </div>
+  </div>
+  <div style="margin-bottom:24px;">
+    <label class="form-label">Case Notes (optional — helps AI context)</label>
+    <textarea class="form-notes" id="notesInput" rows="2" placeholder="No ownership changes. Water is off. No active permits. No improvements noted."></textarea>
+  </div>
+
+  <!-- Upload Zone -->
+  <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click();">
+    <div class="upload-icon">📸</div>
+    <div class="upload-text">Drop inspection photos here or click to browse</div>
+    <div class="upload-hint">Supports JPG, PNG — upload multiple at once</div>
+  </div>
+  <input type="file" id="fileInput" class="hidden" multiple accept="image/*">
+
+  <!-- Action Bar -->
+  <div class="action-bar" id="actionBar" style="display:none;">
+    <button class="btn btn-primary" onclick="analyzeAll()" id="analyzeAllBtn">⚡ Analyze All Photos</button>
+    <button class="btn btn-approve" onclick="approveAllPhotos()" id="approveAllBtn" style="display:none;">✓ Approve All Labels</button>
+    <button class="btn btn-export" onclick="copyExport()" id="exportBtn" style="display:none;">📋 Copy Labels to Clipboard</button>
+    <span class="photo-count" id="photoCount"></span>
+  </div>
+
+  <!-- Photo List -->
+  <div class="photo-list" id="photoList"></div>
+
+  <!-- Export Preview -->
+  <div class="export-section" id="exportSection" style="display:none;">
+    <div class="export-header">Document Preview</div>
+    <pre class="export-pre" id="exportPre"></pre>
+  </div>
+
+  <div class="footer">AI-generated labels are drafts for review — always verify against observed conditions before court submission</div>
+</div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let photos = []; // { id, file, dataUrl, labels: [{code, description, approved}], analyzing, error }
+let apiKey = localStorage.getItem('ce_api_key') || '';
+let idCounter = 0;
+
+const COLUMBUS_CODES = {
+  "4707.01 & 4707.03": "Vacant structure not secured or maintained in accordance with city code",
+  "4525.01": "Structure not weathertight / foundation in disrepair",
+  "4525.02": "Windows, doors or hatchways not weathertight or in good repair",
+  "4525.03": "Stairs/porches not safe, not in sound condition or good repair",
+  "4525.08": "Rain carriers (gutters/downspouts) not maintained",
+  "4525.11": "Exterior not maintained (bare/exposed wood, damaged siding, soffits, peeling paint)",
+  "4525.13": "Fence not maintained in good condition",
+  "4525.14": "Concrete, brick or masonry not sound (chimney, sidewalk, retaining wall)",
+  "4525.15": "Graffiti not removed",
+  "4707.11": "Emergency secure required (structure accessible / opening found)",
+  "4701.11": "Emergency action required to protect public health and safety",
+  "707.03": "Solid waste / garbage / rubbish / debris on premises",
+  "709.03": "High grass / weeds / rank growth (12+ inches)",
+  "705.03": "Premises not clean, sanitary or fit for occupancy",
+  "3332.289(1)": "Prohibited exterior storage of lumber or building materials",
+  "3332.289(2)": "Prohibited exterior storage of motor vehicle, boat, trailer, or shipping container",
+  "3332.289(3)": "Prohibited exterior storage of vehicle parts including tires",
+  "3332.289(5)": "Prohibited exterior storage of machinery or household appliance",
+  "3332.289(6)": "Prohibited exterior storage of junk",
+  "3332.289(7)": "Prohibited exterior storage of salvage",
+  "3332.289(8)": "Prohibited exterior storage of upholstered furniture, mattresses, or similar"
+};
+
+const SYSTEM_PROMPT = `You are a code enforcement photo analysis assistant for the City of Columbus, Ohio. Your job is to analyze inspection photos and generate draft violation labels.
+
+AVAILABLE CODE SECTIONS:
+${Object.entries(COLUMBUS_CODES).map(([code, desc]) => `- ${code}: ${desc}`).join("\n")}
+
+INSTRUCTIONS:
+1. Analyze the photo for any visible code violations
+2. For each violation found, output the code section and a brief description matching the style below
+3. Use the EXACT format for your output
+4. Be specific about what you see (e.g., "bare/exposed wood" not just "deterioration")
+5. For 3332.289 violations, combine into one line and itemize specific prohibited items
+6. For vacant structures with boarded windows or signs of vacancy, always include 4707.01 & 4707.03
+7. Keep descriptions concise - match the style of these real examples:
+   - "4707.01 & 4707.03; Vacant structure not secured or maintained in accordance with city code."
+   - "4525.11; bare/exposed wood."
+   - "4525.14; damaged chimney cap."
+   - "4525.13; damaged fence."
+   - "3332.289; prohibited exterior storage of a door, tire, cushion."
+   - "707.03; solid waste."
+   - "709.03; high grass/weeds."
+   - "4525.11; damaged soffits."
+   - "4525.01; foundation in disrepair, missing cinder block into crawl space."
+   - "4525.01; structure not weathertight, contains damaged window."
+
+OUTPUT FORMAT:
+Return ONLY a JSON array of objects, each with "code" and "description" fields. No markdown, no backticks, no explanation.
+Example: [{"code":"4707.01 & 4707.03","description":"Vacant structure not secured or maintained in accordance with city code."},{"code":"4525.11","description":"bare/exposed wood."}]`;
+
+// ============================================================
+// INIT
+// ============================================================
+window.addEventListener('DOMContentLoaded', () => {
+  if (apiKey) {
+    document.getElementById('apiKeyInput').value = apiKey;
+    setApiStatus('ok', 'Key loaded from previous session');
+    document.getElementById('apiSection').classList.add('connected');
+  }
+
+  // File input
+  document.getElementById('fileInput').addEventListener('change', (e) => {
+    handleFiles(Array.from(e.target.files));
+    e.target.value = '';
+  });
+
+  // Drag and drop
+  const zone = document.getElementById('uploadZone');
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    handleFiles(Array.from(e.dataTransfer.files));
+  });
+});
+
+// ============================================================
+// API KEY
+// ============================================================
+async function testApiKey() {
+  const key = document.getElementById('apiKeyInput').value.trim();
+  if (!key) { setApiStatus('err', 'Please enter an API key'); return; }
+
+  setApiStatus('', 'Testing connection...');
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 10,
+        messages: [{ role: 'user', content: 'Reply with just the word OK' }]
+      })
+    });
+
+    if (resp.ok) {
+      apiKey = key;
+      localStorage.setItem('ce_api_key', key);
+      setApiStatus('ok', '✓ Connected successfully');
+      document.getElementById('apiSection').classList.add('connected');
+    } else {
+      const data = await resp.json().catch(() => ({}));
+      setApiStatus('err', `Connection failed: ${data.error?.message || resp.statusText}`);
+    }
+  } catch (err) {
+    setApiStatus('err', `Connection error: ${err.message}`);
+  }
+}
+
+function setApiStatus(type, msg) {
+  const el = document.getElementById('apiStatus');
+  el.textContent = msg;
+  el.className = 'api-status' + (type ? ' ' + type : '');
+}
+
+// ============================================================
+// FILE HANDLING
+// ============================================================
+function handleFiles(files) {
+  const imageFiles = files.filter(f => f.type.startsWith('image/'));
+  if (!imageFiles.length) return;
+
+  const promises = imageFiles.map(file => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        photos.push({
+          id: ++idCounter,
+          file: file,
+          dataUrl: reader.result,
+          fileName: file.name,
+          labels: [],
+          analyzing: false,
+          error: null
+        });
+        resolve();
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+
+  Promise.all(promises).then(() => render());
+}
+
+// ============================================================
+// ANALYSIS
+// ============================================================
+async function analyzePhoto(photoId) {
+  const photo = photos.find(p => p.id === photoId);
+  if (!photo) return;
+
+  if (!apiKey) {
+    photo.error = 'Please connect your API key first.';
+    render();
+    return;
+  }
+
+  photo.analyzing = true;
+  photo.error = null;
+  render();
+
+  try {
+    // Resize image
+    const resizedBase64 = await resizeImage(photo.dataUrl, 1568, 0.85);
+
+    const address = document.getElementById('addressInput').value;
+    const caseNum = document.getElementById('caseInput').value;
+    const notes = document.getElementById('notesInput').value;
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: SYSTEM_PROMPT,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: resizedBase64 } },
+            { type: 'text', text: `Analyze this code enforcement inspection photo for violations. Property: ${address || 'Unknown'}. Case: ${caseNum || 'Unknown'}. ${notes ? 'Inspector notes: ' + notes : ''}\n\nReturn ONLY a valid JSON array of objects with "code" and "description" fields.` }
+          ]
+        }]
+      })
+    });
+
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      throw new Error(`API error ${resp.status}: ${errData.error?.message || resp.statusText}`);
+    }
+
+    const data = await resp.json();
+    if (!data.content || !data.content.length) throw new Error('Empty API response');
+
+    const text = data.content.map(c => c.text || '').filter(Boolean).join('\n');
+    if (!text) throw new Error('No text in response');
+
+    // Parse JSON
+    const clean = text.replace(/```json|```/g, '').trim();
+    let labels;
+    try {
+      labels = JSON.parse(clean);
+    } catch {
+      const match = clean.match(/\[[\s\S]*?\]/);
+      if (match) labels = JSON.parse(match[0]);
+      else throw new Error('Could not parse response: ' + clean.substring(0, 200));
+    }
+
+    if (!Array.isArray(labels)) throw new Error('Expected array, got ' + typeof labels);
+
+    photo.labels = labels.map(l => ({ code: l.code || '', description: l.description || '', approved: false }));
+    photo.analyzing = false;
+    photo.error = null;
+
+  } catch (err) {
+    photo.analyzing = false;
+    photo.error = err.message;
+  }
+
+  render();
+}
+
+async function analyzeAll() {
+  const btn = document.getElementById('analyzeAllBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Analyzing...';
+
+  for (const photo of photos) {
+    if (photo.labels.length === 0 && !photo.analyzing) {
+      await analyzePhoto(photo.id);
+      await sleep(300);
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = '⚡ Analyze All Photos';
+}
+
+function resizeImage(dataUrl, maxDim, quality) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (w > maxDim || h > maxDim) {
+        const scale = maxDim / Math.max(w, h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality).split(',')[1]);
+    };
+    img.src = dataUrl;
+  });
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ============================================================
+// LABEL ACTIONS
+// ============================================================
+function toggleApproval(photoId, labelIdx) {
+  const photo = photos.find(p => p.id === photoId);
+  if (photo) { photo.labels[labelIdx].approved = !photo.labels[labelIdx].approved; render(); }
+}
+
+function removeLabel(photoId, labelIdx) {
+  const photo = photos.find(p => p.id === photoId);
+  if (photo) { photo.labels.splice(labelIdx, 1); render(); }
+}
+
+function approveAllForPhoto(photoId) {
+  const photo = photos.find(p => p.id === photoId);
+  if (photo) { photo.labels.forEach(l => l.approved = true); render(); }
+}
+
+function approveAllPhotos() {
+  photos.forEach(p => p.labels.forEach(l => l.approved = true));
+  render();
+}
+
+function removePhoto(photoId) {
+  photos = photos.filter(p => p.id !== photoId);
+  render();
+}
+
+// Edit state (only one at a time)
+let editingState = null; // { photoId, labelIdx }
+
+function startEdit(photoId, labelIdx) {
+  editingState = { photoId, labelIdx };
+  render();
+}
+
+function cancelEdit() {
+  editingState = null;
+  render();
+}
+
+function saveEdit(photoId, labelIdx) {
+  const photo = photos.find(p => p.id === photoId);
+  if (!photo) return;
+  const codeEl = document.getElementById(`edit-code-${photoId}-${labelIdx}`);
+  const descEl = document.getElementById(`edit-desc-${photoId}-${labelIdx}`);
+  if (codeEl && descEl) {
+    photo.labels[labelIdx].code = codeEl.value;
+    photo.labels[labelIdx].description = descEl.value;
+  }
+  editingState = null;
+  render();
+}
+
+// Add label state
+let addingState = null; // photoId
+
+function startAdd(photoId) {
+  addingState = photoId;
+  render();
+}
+
+function cancelAdd() {
+  addingState = null;
+  render();
+}
+
+function saveAdd(photoId) {
+  const photo = photos.find(p => p.id === photoId);
+  if (!photo) return;
+  const codeEl = document.getElementById(`add-code-${photoId}`);
+  const descEl = document.getElementById(`add-desc-${photoId}`);
+  if (codeEl && descEl && codeEl.value) {
+    photo.labels.push({ code: codeEl.value, description: descEl.value, approved: false });
+  }
+  addingState = null;
+  render();
+}
+
+// ============================================================
+// EXPORT
+// ============================================================
+function generateExport() {
+  const address = document.getElementById('addressInput').value || '[ADDRESS]';
+  const caseNum = document.getElementById('caseInput').value || '[CASE NUMBER]';
+  const officer = document.getElementById('officerInput').value;
+  const notes = document.getElementById('notesInput').value;
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' });
+
+  let out = `${address} - ${caseNum}\n`;
+  out += `Pictures obtained ${dateStr}.\n`;
+  if (notes) out += `${notes}\n`;
+  out += `Company: Code Enforcement\n`;
+  out += `Contact: ${officer}\n`;
+  out += `Created: ${now.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}\n\n`;
+
+  photos.forEach((photo, i) => {
+    out += `(${i + 1})\n`;
+    photo.labels.forEach(l => {
+      out += `${l.code}; ${l.description}\n`;
+    });
+    out += `\n`;
+  });
+
+  return out;
+}
+
+function copyExport() {
+  const text = generateExport();
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('exportBtn');
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => { btn.textContent = '📋 Copy Labels to Clipboard'; }, 2000);
+  });
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function render() {
+  const totalLabels = photos.reduce((s, p) => s + p.labels.length, 0);
+  const approvedLabels = photos.reduce((s, p) => s + p.labels.filter(l => l.approved).length, 0);
+  const allDone = totalLabels > 0 && totalLabels === approvedLabels;
+
+  // Progress
+  const pw = document.getElementById('progressWrap');
+  if (totalLabels > 0) {
+    pw.style.display = 'flex';
+    document.getElementById('progressText').textContent = `${approvedLabels}/${totalLabels} labels approved`;
+    const fill = document.getElementById('progressFill');
+    fill.style.width = `${(approvedLabels / totalLabels) * 100}%`;
+    fill.className = 'progress-fill' + (allDone ? ' done' : '');
+  } else {
+    pw.style.display = 'none';
+  }
+
+  // Action bar
+  const ab = document.getElementById('actionBar');
+  ab.style.display = photos.length > 0 ? 'flex' : 'none';
+  document.getElementById('approveAllBtn').style.display = totalLabels > 0 ? '' : 'none';
+  const exportBtn = document.getElementById('exportBtn');
+  exportBtn.style.display = totalLabels > 0 ? '' : 'none';
+  exportBtn.className = 'btn btn-export' + (allDone ? ' ready' : '');
+  document.getElementById('photoCount').textContent = `${photos.length} photo${photos.length !== 1 ? 's' : ''}`;
+
+  // Photo list
+  const list = document.getElementById('photoList');
+  list.innerHTML = '';
+
+  photos.forEach((photo, photoIdx) => {
+    const allApproved = photo.labels.length > 0 && photo.labels.every(l => l.approved);
+
+    const card = document.createElement('div');
+    card.className = 'photo-card' + (allApproved ? ' all-approved' : '');
+
+    let labelsHtml = '';
+
+    if (photo.analyzing) {
+      labelsHtml = `<div class="analyzing-msg"><div class="spinner"></div> Analyzing photo for violations...</div>`;
+    } else if (photo.error) {
+      labelsHtml = `<div class="error-msg">${esc(photo.error)} <button class="btn-small" style="margin-left:12px;background:#7c3aed;color:white;" onclick="analyzePhoto(${photo.id})">Retry</button></div>`;
+    } else if (photo.labels.length === 0) {
+      labelsHtml = `<div class="empty-msg">No labels yet. <button class="btn-small" style="margin-left:12px;background:#7c3aed;color:white;font-weight:600;" onclick="analyzePhoto(${photo.id})">Analyze Photo</button></div>`;
+    }
+
+    // Labels
+    photo.labels.forEach((label, li) => {
+      if (editingState && editingState.photoId === photo.id && editingState.labelIdx === li) {
+        labelsHtml += `
+          <div class="edit-row">
+            <input class="edit-input edit-code mono" id="edit-code-${photo.id}-${li}" value="${esc(label.code)}">
+            <input class="edit-input edit-desc" id="edit-desc-${photo.id}-${li}" value="${esc(label.description)}">
+            <div class="edit-actions">
+              <button class="btn-small edit-save" onclick="saveEdit(${photo.id},${li})">Save</button>
+              <button class="btn-small edit-cancel" onclick="cancelEdit()">Cancel</button>
+            </div>
+          </div>`;
+      } else {
+        labelsHtml += `
+          <div class="label-row">
+            <button class="label-checkbox${label.approved ? ' checked' : ''}" onclick="toggleApproval(${photo.id},${li})">${label.approved ? '✓' : ''}</button>
+            <div class="label-content">
+              <span class="label-code mono">${esc(label.code)}</span>
+              <span class="label-sep">;</span>
+              <span class="label-desc">${esc(label.description)}</span>
+            </div>
+            <div class="label-actions">
+              <button class="label-edit-btn" onclick="startEdit(${photo.id},${li})">edit</button>
+              <button class="label-remove-btn" onclick="removeLabel(${photo.id},${li})">✕</button>
+            </div>
+          </div>`;
+      }
+    });
+
+    // Add label UI
+    if (!photo.analyzing) {
+      if (addingState === photo.id) {
+        let opts = '<option value="">Select code...</option>';
+        for (const [code, desc] of Object.entries(COLUMBUS_CODES)) {
+          opts += `<option value="${esc(code)}">${esc(code)} - ${esc(desc.substring(0, 50))}</option>`;
         }
-
-        function toggleLocation(code, location) {
-            if (!selectedViolations[code]) {
-                selectedViolations[code] = [];
-            }
-            
-            const index = selectedViolations[code].indexOf(location);
-            if (index === -1) {
-                selectedViolations[code].push(location);
-            } else {
-                selectedViolations[code].splice(index, 1);
-            }
-            
-            if (selectedViolations[code].length === 0) {
-                delete selectedViolations[code];
-            }
-            
-            updateButtonStates();
+        labelsHtml += `
+          <div class="add-row">
+            <select class="add-select mono" id="add-code-${photo.id}">${opts}</select>
+            <input class="edit-input edit-desc" id="add-desc-${photo.id}" placeholder="Description...">
+            <div class="add-actions">
+              <button class="btn-small edit-save" onclick="saveAdd(${photo.id})">Add</button>
+              <button class="btn-small edit-cancel" onclick="cancelAdd()">Cancel</button>
+            </div>
+          </div>`;
+      } else {
+        labelsHtml += `<div class="label-footer">`;
+        labelsHtml += `<button class="btn-add-label" onclick="startAdd(${photo.id})">+ Add Label</button>`;
+        if (photo.labels.length > 0 && !allApproved) {
+          labelsHtml += `<button class="btn-approve-all" onclick="approveAllForPhoto(${photo.id})">✓ Approve All</button>`;
         }
-
-        function updateButtonStates() {
-            document.querySelectorAll('.location-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            
-            Object.keys(selectedViolations).forEach(code => {
-                selectedViolations[code].forEach(location => {
-                    const btn = Array.from(document.querySelectorAll('.location-btn')).find(b => 
-                        b.onclick.toString().includes(`'${code}'`) && 
-                        b.onclick.toString().includes(`'${location}'`)
-                    );
-                    if (btn) btn.classList.add('active');
-                });
-            });
+        if (photo.labels.length > 0) {
+          labelsHtml += `<button class="btn-reanalyze" onclick="analyzePhoto(${photo.id})">Re-analyze</button>`;
         }
+        labelsHtml += `</div>`;
+      }
+    }
 
-        function generateReport() {
-            const inspectorName = document.getElementById('inspectorName').value;
-            const propertyAddress = document.getElementById('propertyAddress').value;
-            const parcelNumber = document.getElementById('parcelNumber').value;
-            const inspectionDate = document.getElementById('inspectionDate').value;
-            const propertyStatus = document.getElementById('propertyStatus').value;
-            const isCourtProperty = document.getElementById('isCourtProperty').checked;
-            const courtViolations = document.getElementById('courtViolations').value;
+    card.innerHTML = `
+      <div class="photo-card-inner">
+        <div class="photo-img-wrap">
+          <img class="photo-img" src="${photo.dataUrl}" alt="Photo ${photoIdx + 1}">
+          <div class="photo-number mono">(${photoIdx + 1})</div>
+          ${allApproved ? '<div class="photo-approved-badge">✓ APPROVED</div>' : ''}
+          <button class="photo-remove" onclick="removePhoto(${photo.id})">REMOVE</button>
+        </div>
+        <div class="labels-panel">${labelsHtml}</div>
+      </div>`;
 
-            if (!inspectorName || !propertyAddress || !parcelNumber || !inspectionDate || !propertyStatus) {
-                alert('Please fill in all required fields.');
-                return;
-            }
+    list.appendChild(card);
+  });
 
-            let report = `COLUMBUS CODE ENFORCEMENT INSPECTION REPORT
+  // Export preview
+  const exportSection = document.getElementById('exportSection');
+  if (totalLabels > 0) {
+    exportSection.style.display = '';
+    document.getElementById('exportPre').textContent = generateExport();
+  } else {
+    exportSection.style.display = 'none';
+  }
+}
 
-Date: ${inspectionDate}
-Inspector: ${inspectorName}
-Property Address: ${propertyAddress}
-Parcel Number: ${parcelNumber}
-Property Status: ${propertyStatus}
-
-`;
-
-            // Add court property violations if applicable
-            if (isCourtProperty && courtViolations.trim()) {
-                report += `COURT PROPERTY - AFFIDAVIT VIOLATIONS:
-
-The following violations were noted on the affidavit for this case:
-
-${courtViolations}
-
-`;
-            }
-
-            report += `INSPECTION FINDINGS:
-
-On ${inspectionDate}, Code Enforcement Officer ${inspectorName} conducted an inspection of the property located at ${propertyAddress} (Parcel #${parcelNumber}) and observed the following conditions requiring correction:
-
-`;
-
-            // Group violations by title
-            const title47 = [];
-            const title45 = [];
-            const title7 = [];
-            const title33 = [];
-
-            const violationDescriptions = {
-                '4707.01': 'Vacant building maintenance violations - Property not properly secured and maintained as required',
-                '4707.03': 'Vacant building security violations - Structure not secured in accordance with required standards',
-                '4525.01': 'Structural integrity issues - Foundation, floors, walls, or roof not substantially weathertight',
-                '4525.08': 'Rain carrier deficiencies - Gutters and downspouts not properly maintained',
-                '4525.11-primary': 'Exterior maintenance violations - Primary structure exterior components not properly maintained',
-                '4525.02': 'Window/door maintenance violations - Windows and doors not maintained in sound working condition',
-                '4525.03': 'Stairway/porch safety violations - Stairs and porches not maintained in safe condition',
-                '4523.04': 'Electrical system violations - Electrical components not properly installed or maintained',
-                '4525.11-accessory': 'Accessory structure violations - Accessory buildings not properly maintained',
-                '4525.13': 'Fence maintenance violations - Fences and gates not maintained in good condition',
-                '4525.14': 'Concrete/masonry deficiencies - Concrete and masonry work not sound or in good repair',
-                '4525.11-yard': 'Yard hazard violations - Various hazardous conditions observed on premises',
-                '4525.15': 'Graffiti violations - Graffiti present on structures requiring removal',
-                '709.03': 'Excessive vegetation growth - Grass, weeds, and vegetation exceeding permitted heights',
-                '707.03': 'Solid waste accumulation - Various solid waste materials observed on premises',
-                '705.03': 'Unsanitary conditions - Property not maintained in clean, sanitary condition',
-                '3332.289': 'Prohibited outdoor storage violations - Unauthorized materials stored on premises',
-                '3312.35': 'Prohibited vehicle parking violations - Unauthorized vehicles parked on property',
-                '3312.37': 'Inoperable vehicle violations - Inoperable vehicles present on premises',
-                '3312.43': 'Parking surface violations - Vehicles parked on unimproved surfaces',
-                '3305.01': 'Zoning clearance violations - Modifications made without required permits',
-                '3305.03': 'Site plan compliance violations - Property not in compliance with approved site plan'
-            };
-
-            Object.keys(selectedViolations).forEach(code => {
-                const locations = selectedViolations[code].join(', ');
-                const description = violationDescriptions[code];
-                const violationText = `${description} (${locations} areas observed)`;
-
-                if (code.startsWith('47')) {
-                    title47.push(violationText);
-                } else if (code.startsWith('45') || code.startsWith('452')) {
-                    title45.push(violationText);
-                } else if (code.startsWith('7')) {
-                    title7.push(violationText);
-                } else if (code.startsWith('33')) {
-                    title33.push(violationText);
-                }
-            });
-
-            if (title47.length > 0) {
-                report += `TITLE 47 - NUISANCE ABATEMENT CODE VIOLATIONS:
-${title47.map(v => `• ${v}`).join('\n')}
-
-`;
-            }
-
-            if (title45.length > 0) {
-                report += `TITLE 45 - HOUSING CODE VIOLATIONS:
-${title45.map(v => `• ${v}`).join('\n')}
-
-`;
-            }
-
-            if (title7.length > 0) {
-                report += `TITLE 7 - HEALTH, SANITATION & SAFETY CODE VIOLATIONS:
-${title7.map(v => `• ${v}`).join('\n')}
-
-`;
-            }
-
-            if (title33.length > 0) {
-                report += `TITLE 33 - ZONING CODE VIOLATIONS:
-${title33.map(v => `• ${v}`).join('\n')}
-
-`;
-            }
-
-            if (Object.keys(selectedViolations).length === 0) {
-                report += `No violations observed during this inspection.
-
-`;
-            }
-
-            report += `This inspection was conducted in accordance with Columbus City Code enforcement procedures.
-
-Inspector: ${inspectorName}
-Date: ${inspectionDate}`;
-
-            document.getElementById('reportOutput').textContent = report;
-            document.getElementById('reportOutput').classList.remove('hidden');
-            
-            // Scroll to report
-            document.getElementById('reportOutput').scrollIntoView({ behavior: 'smooth' });
-        }
-
-        // Set today's date as default
-        document.getElementById('inspectionDate').valueAsDate = new Date();
-    </script>
+function esc(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+</script>
 </body>
 </html>

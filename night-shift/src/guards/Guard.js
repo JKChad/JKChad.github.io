@@ -4,6 +4,8 @@ import { clamp } from '../utils/math.js';
 import { createPatrolPath, PatrolBrain } from './Patrol.js';
 
 const EYE_HEIGHT = 1.68;
+const FLASHLIGHT_RANGE = 12;
+const FLASHLIGHT_FOV = Math.PI / 7;
 const ALERT_SUSPICION = 0.24;
 const INVESTIGATE_SUSPICION = 0.56;
 const VISUAL_GRACE = 0.42;
@@ -23,8 +25,8 @@ export class Guard {
     this.suspicion = 0;
     this.state = 'patrol';
     this.hp = 100;
-    this.flashlightRange = 12;
-    this.flashlightFov = Math.PI / 7;
+    this.flashlightRange = FLASHLIGHT_RANGE;
+    this.flashlightFov = FLASHLIGHT_FOV;
     this.lastSeenPos = null;
     this.confidence = 0;
     this.visualContactTimer = 0;
@@ -385,7 +387,6 @@ export class Guard {
     this.flashlight.distance = this.flashlightRange;
     this.flashlight.angle = this.flashlightFov;
     this.flashlightTarget.position.copy(eye).addScaledVector(this.forward, this.flashlightRange);
-    this.flashlightTarget.position.y -= 0.35;
   }
 
   _createHumanoid() {

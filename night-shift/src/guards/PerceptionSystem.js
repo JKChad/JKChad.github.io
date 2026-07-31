@@ -21,6 +21,9 @@ export class PerceptionSystem {
     this.noises = [];
     this._spottedLatched = false;
     this._hadVisualContact = false;
+    this._occluderSource = null;
+    this._occluderSourceLength = -1;
+    this._cachedOccluders = null;
 
     this.bus?.on('noise', (payload) => this.reportNoise(payload));
     this.bus?.on('player:noise', (payload) => this.reportNoise(payload));
@@ -138,7 +141,17 @@ export class PerceptionSystem {
     }
 
     const illumination = this._sampleIllumination(targetPoint);
-    const visibility = clamp(target.visibility, 0, 1);
+    const attentionVis = clamp(target.visibility, 0, 1);
+    let flashlight = 0;
+    if (inFlashlightCone) {
+      const beamAngleFalloff = smoothstep(flashlightDotThreshold, 1, flashlightDot);
+      const beamDistanceFalloff = 1 - smoothstep(flashlightRange * 0.45, flashlightRange, distance);
+      flashlight = clamp(beamAngleFalloff * beamDistanceFalloff, 0, 1);
+    }
+
+    const visibility = (distance <= 2.5 || flashlight > 0.55)
+      ? Math.max(attentionVis, 0.22)
+      : attentionVis;
 
     let roomScore = 0;
     if (inViewCone) {
@@ -148,15 +161,7 @@ export class PerceptionSystem {
       roomScore = visibility * lightTerm * distanceFalloff * fovFalloff;
     }
 
-    let flashlight = 0;
-    let flashlightScore = 0;
-    if (inFlashlightCone) {
-      const beamAngleFalloff = smoothstep(flashlightDotThreshold, 1, flashlightDot);
-      const beamDistanceFalloff = 1 - smoothstep(flashlightRange * 0.45, flashlightRange, distance);
-      flashlight = clamp(beamAngleFalloff * beamDistanceFalloff, 0, 1);
-      flashlightScore = visibility * flashlight * 0.95;
-    }
-
+    const flashlightScore = inFlashlightCone ? visibility * flashlight * 0.95 : 0;
     const combinedIllumination = clamp(illumination + flashlight * 0.85, 0, 1);
     let score = clamp(roomScore + flashlightScore, 0, 1);
 
@@ -246,13 +251,12 @@ export class PerceptionSystem {
     this.raycaster.near = 0.05;
     this.raycaster.far = Math.max(0.05, distance - 0.18);
 
-    const hits = this.raycaster.intersectObjects(this.scene.children, true);
+    const hits = this.raycaster.intersectObjects(this._getOccluders(), this._shouldRecurseOccluders());
     for (const hit of hits) {
       const object = hit.object;
       if (!object?.isMesh || !object.visible) continue;
-      if (object.userData?.perceptionIgnore || object.userData?.noLineOfSight) continue;
+      if (isLineOfSightIgnored(object, hit)) continue;
       if (excludedRoots.some((root) => root && isDescendantOf(object, root))) continue;
-      if (isMostlyTransparent(object.material)) continue;
       return false;
     }
 
@@ -293,16 +297,46 @@ export class PerceptionSystem {
     this.raycaster.near = 0.05;
     this.raycaster.far = Math.max(0.05, distance - 0.12);
 
-    const hits = this.raycaster.intersectObjects(this.scene.children, true);
+    const hits = this.raycaster.intersectObjects(this._getOccluders(), this._shouldRecurseOccluders());
     for (const hit of hits) {
       const object = hit.object;
       if (!object?.isMesh || !object.visible) continue;
-      if (object.userData?.perceptionIgnore || object.userData?.noLineOfSight) continue;
-      if (isMostlyTransparent(object.material)) continue;
+      if (isLineOfSightIgnored(object, hit)) continue;
       return false;
     }
 
     return true;
+  }
+
+  _getOccluders() {
+    const source = this._occluderSourceFromRoom();
+    if (source) {
+      if (source !== this._occluderSource || source.length !== this._occluderSourceLength) {
+        this._occluderSource = source;
+        this._occluderSourceLength = source.length;
+        this._cachedOccluders = source.filter(Boolean);
+      }
+      return this._cachedOccluders;
+    }
+
+    this._occluderSource = null;
+    this._occluderSourceLength = -1;
+    this._cachedOccluders = null;
+    return this.scene?.children ?? [];
+  }
+
+  _shouldRecurseOccluders() {
+    return !this._occluderSourceFromRoom();
+  }
+
+  _occluderSourceFromRoom() {
+    const candidates = [
+      this.lights?.room?.occluders,
+      this.scene?.userData?.room?.occluders,
+      this.scene?.userData?.roomOccluders,
+      this.scene?.userData?.occluders,
+    ];
+    return candidates.find((list) => Array.isArray(list) && list.length > 0) ?? null;
   }
 
   _emptyResult(position, visibility) {
@@ -341,7 +375,51 @@ function isDescendantOf(object, root) {
   return false;
 }
 
-function isMostlyTransparent(material) {
-  if (Array.isArray(material)) return material.every(isMostlyTransparent);
-  return Boolean(material?.transparent && material.opacity < 0.2);
+function isLineOfSightIgnored(object, hit = null) {
+  let cursor = object;
+  while (cursor) {
+    const data = cursor.userData ?? {};
+    if (
+      data.perceptionIgnore === true ||
+      data.noLineOfSight === true ||
+      data.lightVolume === true ||
+      data.isDecal === true ||
+      data.isVfx === true ||
+      data.isCombatVfx === true
+    ) {
+      return true;
+    }
+
+    if (hasIgnoredName(cursor.name)) return true;
+    if (cursor === object && isTransparentLineOfSightMaterial(materialForHit(cursor.material, hit))) return true;
+    cursor = cursor.parent;
+  }
+  return false;
+}
+
+function hasIgnoredName(name = '') {
+  const normalized = name.toLowerCase();
+  return normalized.includes('pool') || normalized.includes('volume') || normalized.includes('haze');
+}
+
+function materialForHit(material, hit) {
+  if (!Array.isArray(material)) return material;
+  const index = hit?.face?.materialIndex;
+  if (Number.isInteger(index) && material[index]) return material[index];
+  return material;
+}
+
+function isTransparentLineOfSightMaterial(material) {
+  if (Array.isArray(material)) return material.every(isTransparentLineOfSightMaterial);
+  if (!material?.transparent) return false;
+  const opacity = materialOpacity(material);
+  return opacity < 0.95;
+}
+
+function materialOpacity(material) {
+  const values = [];
+  if (Number.isFinite(material?.opacity)) values.push(material.opacity);
+  const uniformOpacity = material?.uniforms?.opacity?.value;
+  if (Number.isFinite(uniformOpacity)) values.push(uniformOpacity);
+  return values.length > 0 ? Math.min(...values) : 1;
 }

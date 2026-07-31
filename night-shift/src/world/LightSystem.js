@@ -204,6 +204,12 @@ export class LightSystem {
     });
   }
 
+  _tagLightVolume(mesh) {
+    mesh.userData.perceptionIgnore = true;
+    mesh.userData.lightVolume = true;
+    return mesh;
+  }
+
   _bulbMaterial(color, intensity) {
     return new THREE.MeshStandardMaterial({
       color,
@@ -365,6 +371,7 @@ export class LightSystem {
       new THREE.ConeGeometry(radius, height, 48, 1, true),
       this._conePoolMaterial(color, 0.072, radius, height)
     );
+    this._tagLightVolume(cone);
     cone.name = `${id} volumetric cone`;
     cone.position.copy(position).add(target).multiplyScalar(0.5);
     cone.quaternion.setFromUnitVectors(_up, _tmpD.copy(position).sub(target).normalize());
@@ -375,6 +382,7 @@ export class LightSystem {
       new THREE.CircleGeometry(diskRadius, 64),
       this._diskPoolMaterial(color, 0.105, diskRadius)
     );
+    this._tagLightVolume(disk);
     disk.name = `${id} shader floor light contact pool`;
     disk.position.copy(target);
     disk.position.y = 0.018;
@@ -431,6 +439,7 @@ export class LightSystem {
     const pool = new THREE.Group();
     pool.name = 'warm desk lamp pool';
     const disk = new THREE.Mesh(new THREE.CircleGeometry(1.55, 48), this._diskPoolMaterial(color, 0.105, 1.55));
+    this._tagLightVolume(disk);
     disk.position.set(-3.1, 0.025, -0.42);
     disk.rotation.x = -Math.PI / 2;
     pool.add(disk);
@@ -488,6 +497,7 @@ export class LightSystem {
     const makeHaze = (name, width, height, position, rotationY, opacity) => {
       const mat = this._hazePlaneMaterial(color, opacity, width, height);
       const haze = new THREE.Mesh(new THREE.PlaneGeometry(width, height, 1, 1), mat);
+      this._tagLightVolume(haze);
       haze.name = name;
       haze.position.copy(position);
       haze.rotation.y = rotationY;
@@ -501,6 +511,7 @@ export class LightSystem {
     makeHaze('server rack low skim haze', 4.6, 0.85, new THREE.Vector3(10.55, 0.58, -4.55), Math.PI / 2, 0.038);
 
     const disk = new THREE.Mesh(new THREE.CircleGeometry(2.85, 56), this._diskPoolMaterial(color, 0.052, 2.85));
+    this._tagLightVolume(disk);
     disk.name = 'server rack floor spill';
     disk.position.set(10.7, 0.024, -4.55);
     disk.rotation.x = -Math.PI / 2;

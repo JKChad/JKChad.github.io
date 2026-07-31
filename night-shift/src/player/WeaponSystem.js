@@ -113,9 +113,9 @@ export class WeaponSystem {
       this._beginReload();
     } else if (event.code === KEYS.melee) {
       this._melee();
-    } else if (event.code === 'KeyE' || event.code === 'BracketRight') {
+    } else if (event.code === 'KeyC' || event.code === 'BracketRight') {
       this._selectWeapon(this.currentWeaponIndex + 1);
-    } else if (event.code === 'BracketLeft') {
+    } else if (event.code === 'BracketLeft' || event.code === 'KeyV') {
       this._selectWeapon(this.currentWeaponIndex - 1);
     } else if (event.code === 'KeyX') {
       this._selectGadget(this.currentGadgetIndex + 1);

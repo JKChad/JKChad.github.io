@@ -1,55 +1,69 @@
 # NIGHT SHIFT
 
-NIGHT SHIFT is a first-person stealth/combat vertical slice about two contractors sharing one attention budget. Whoever holds attention is visible and hunted; whoever sheds it becomes ghostlike enough to cross exposed space and work the dark. Get through the room and extract at the far door.
+First-person co-op stealth-action. Stealth is a conversation: a shared attention meter always sums to 100%. Light is the map. Getting spotted hard-cuts to loud CQB — you can fight out, but the invoice will notice.
 
-## Design pillars
+## Run
 
-- **Attention conversation:** stealth is negotiated moment to moment. Pull heat onto yourself to open a ghost window for the partner, or release attention when your route is getting burned.
-- **Light-as-map:** darkness, broken fixtures, emergency spill, and guard sightlines define the readable safe routes.
-- **Genre hard-cut:** getting spotted is not a fail state; it snaps the slice from stealth into close-quarters survival.
-- **Economy-as-difficulty:** every shot, broken light, loud second, and damage event eats into the contract, so survival and payout are the same pressure.
-
-## Run locally
-
-```sh
+```bash
 npm install
 npm run dev
 ```
 
-Open the Vite URL in a WebGL-capable browser and choose **Accept Contract** to lock pointer input and start the shift.
+Open the Vite URL → **Accept Contract**.
 
-For a production check:
+### Levels
 
-```sh
+| Query | Level |
+|---|---|
+| `?level=level01_archives` (default) | Vertical atrium archives |
+| `?level=level02_substation` | Alarm flips layout/lights |
+| `?level=level03_loading_bay` | Wide loading bay / catwalks |
+
+### Netplay (host-authoritative WebRTC)
+
+Use the lobby panel: **Host** copies a room code, partner **Join**s. Attention is host-authoritative. Movement is client-predicted and reconciled. Peer leave continues solo.
+
+Latency sim: `?netTest=1` (150ms + loss).
+
+### Controls (Seat 0)
+
+- WASD move · Mouse look · Shift walk · Ctrl crouch
+- LMB fire · RMB ADS · R reload · Q melee
+- F distract · 1/2 trade attention
+- G gadget · X cycle gadget · C/V weapon swap
+- E hide body (near corpse)
+
+Seat 1 (local hotseat / pad): arrows + numpad (see `src/input/bindings.js`). Gamepad 0/1 map to seats.
+
+## Design pillars
+
+1. **Attention conversation** — make noise to buy your partner a ghost window
+2. **Light-as-map** — break bulbs, kill volumetric pools, traverse shadow
+3. **Genre hard-cut** — no stealth soft-fail restart; fight or regroup
+4. **Economy-as-difficulty** — itemized invoice; Silence/Muscle/Tech/Nerve stats; drone modules
+
+## Architecture
+
+Engine-agnostic core under `src/core/` (attention, alert, economy, input seats, net session, partner brain). Three.js stays in presentation adapters. This build is portable toward a native console engine.
+
+## Scripts
+
+```bash
 npm run build
+npm run smoke              # headless boot + loud transition
+npm run test:visual        # screenshot-diff light pools
+npm run test:visual:update # refresh baselines
+node src/core/net/netTest.mjs
 ```
 
-## Controls
+## Systems
 
-- **WASD:** move
-- **Mouse:** look
-- **Shift:** walk
-- **Control:** crouch
-- **F:** throw a distraction
-- **1:** hold/pull attention onto you
-- **2:** release attention to the partner
-- **Right mouse:** aim down sights
-- **Left mouse:** fire
-- **R:** reload
-- **Q:** melee
-- **Escape:** release pointer lock
-- **Extraction:** reach the far door; no key press required.
-
-## Systems list
-
-- Shared attention ledger with player heat, partner ghost-window readout, suspicion copy space, and extract prompt API.
-- Partner ghost presence driven by attention transfer.
-- One playable room built around patrol routes, lighting, cover, and a far-door extraction point.
-- Guard perception with light sampling, line of sight, suspicion, hearing, investigation, chase, and combat escalation.
-- Hard-cut loud mode with alarm state, reinforcements, weapon handling, melee, reloads, and ADS.
-- Contract invoice economy tracking base pay, stealth bonus, ammunition costs, property damage, loud entry, and hazard pay over time.
-- Three.js renderer with fixed 60 Hz gameplay pacing via `FrameLock`.
-- Event-bus orchestration between attention, mode, economy, weapon, guard, combat, audio, post-processing, and HUD systems.
-- Procedural audio unlock and lightweight sound effects for alarms, distractions, shots, reloads, and impacts.
-- Post-processing feedback for visibility, loud mode, film grain, and performance state.
-- WebGL boot guard with retryable pointer-lock start flow.
+- Dual-seat input abstraction (keyboard + gamepad + remote)
+- Host-authoritative PeerJS netplay
+- Guard AlertBrain tiers + body hide/propagate
+- Weapons (SMG/Pistol/Shotgun/DMR) + Flashbang/EMP/Taser
+- Enemy types: rusher / shield / tech / sniper
+- Regroup loop when blown
+- Procedural spatial audio + tension music
+- 60Hz FrameLock + adaptive PerfBudget
+- Visual regression on fixed cameras

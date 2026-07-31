@@ -18,13 +18,26 @@ function damp(current, target, lambda, dt) {
   return current + (target - current) * (1 - Math.exp(-lambda * dt));
 }
 
+function smaaPresetFor(quality = 'medium') {
+  return quality === 'low'
+    ? (SMAAPreset?.LOW ?? SMAAPreset?.MEDIUM)
+    : SMAAPreset?.MEDIUM;
+}
+
 export class PostFx {
-  constructor(renderer, scene, camera) {
+  constructor(renderer, scene, camera, initialBudget = {}) {
     this.renderer = renderer;
     this.scene = scene;
     this.camera = camera;
     this._lastDt = 0;
     this._reflectionFallback = null;
+    this._budget = {
+      bloomEnabled: true,
+      smaaEnabled: true,
+      smaaQuality: 'medium',
+      ssrEnabled: true,
+      ...initialBudget,
+    };
 
     // UnsignedByte is far more stable on iGPU / SwiftShader than HalfFloat.
     this.composer = new EffectComposer(renderer, {
@@ -32,7 +45,6 @@ export class PostFx {
       multisampling: 0,
       stencilBuffer: false,
     });
-    this._budget = { bloomEnabled: true, smaaEnabled: true };
     this._softwareGl = false;
     try {
       const gl = renderer.getContext?.();
@@ -49,7 +61,7 @@ export class PostFx {
     this.composer.addPass(this.renderPass);
 
     this.bloom = new BloomEffect({
-      intensity: 0.28,
+      intensity: 0.18,
       luminanceThreshold: 0.9,
       luminanceSmoothing: 0.13,
       mipmapBlur: true,
@@ -57,7 +69,9 @@ export class PostFx {
       levels: 4,
     });
 
-    this.smaa = new SMAAEffect({ preset: SMAAPreset?.MEDIUM });
+    const initialPixelRatio = initialBudget.pixelRatio ?? renderer.getPixelRatio?.() ?? 1;
+    const smaaQuality = initialBudget.smaaQuality ?? (initialPixelRatio <= 0.9 ? 'low' : 'medium');
+    this.smaa = new SMAAEffect({ preset: smaaPresetFor(smaaQuality) });
     this.vignette = new VignetteEffect({
       technique: VignetteTechnique?.ESKIL,
       offset: 0.38,
@@ -68,7 +82,8 @@ export class PostFx {
       contrast: 1.025,
     });
 
-    this.ssr = this._tryCreateSSR();
+    const allowSsr = !this._softwareGl && this._budget.ssrEnabled !== false && initialPixelRatio > 1;
+    this.ssr = allowSsr ? this._tryCreateSSR() : null;
     if (this.ssr) {
       this.ssrPass = new EffectPass(camera, this.ssr);
       this.composer.addPass(this.ssrPass);
@@ -83,6 +98,7 @@ export class PostFx {
     this.composer.addPass(this.lookPass);
 
     if (!this.ssr) this._installReflectionFallback();
+    this.applyBudget(this._budget);
 
     const size = renderer.getSize(new THREE.Vector2());
     this.setSize(size.x, size.y);
@@ -130,7 +146,11 @@ export class PostFx {
   }
 
   render() {
-    const degraded = this._budget?.bloomEnabled === false && this._budget?.smaaEnabled === false;
+    const postDisabled =
+      this._budget?.bloomEnabled === false &&
+      this._budget?.smaaEnabled === false &&
+      (!this.ssrPass || this.ssrPass.enabled === false);
+    const degraded = this._softwareGl || postDisabled;
     if (this._softwareGl || degraded) {
       this.renderer.render(this.scene, this.camera);
     } else {
@@ -151,10 +171,12 @@ export class PostFx {
     this._budget = snapshot || this._budget;
     const bloomEnabled = snapshot.bloomEnabled !== false;
     const smaaEnabled = snapshot.smaaEnabled !== false;
+    const pixelRatio = snapshot.pixelRatio ?? this.renderer.getPixelRatio?.() ?? 1;
+    const ssrEnabled = snapshot.ssrEnabled !== false && pixelRatio > 1;
 
     if (this.bloomPass) this.bloomPass.enabled = bloomEnabled;
     if (this.smaaPass) this.smaaPass.enabled = smaaEnabled;
-    if (this.ssrPass) this.ssrPass.enabled = snapshot.pixelRatio === undefined || snapshot.pixelRatio >= 0.95;
+    if (this.ssrPass) this.ssrPass.enabled = ssrEnabled;
   }
 
   update(dt, { mode = 'stealth', visibility = 1, budget = null } = {}) {
@@ -164,7 +186,7 @@ export class PostFx {
     const ghost = THREE.MathUtils.clamp(1 - visibility, 0, 1);
     const loud = mode === 'loud' ? 1 : 0;
 
-    const targetBloom = 0.26 + loud * 0.1 + ghost * 0.02;
+    const targetBloom = 0.18 + loud * 0.06 + ghost * 0.015;
     const targetDarkness = 0.36 + loud * 0.06 - ghost * 0.03;
     const targetGrain = 0.016 + loud * 0.003 + ghost * 0.003;
     const targetContrast = 1.015 + loud * 0.015 - ghost * 0.008;

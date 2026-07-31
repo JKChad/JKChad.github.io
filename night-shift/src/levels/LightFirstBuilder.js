@@ -43,6 +43,15 @@ class LevelLightSystem {
     this._time = 0;
     this._occluders = occluders;
     this._raycaster = new THREE.Raycaster();
+    this._budget = {
+      shadowsEnabled: true,
+      shadowCastersEnabled: true,
+      maxShadowCasters: 1,
+      shadowMapSize: 512,
+      lightVolumesEnabled: true,
+    };
+    this._shadowCasterLimit = 1;
+    this._shadowCasterCount = 0;
 
     this.ambient = new THREE.AmbientLight(0x111922, 0.035);
     this.ambient.name = 'level ambient shadow lift';
@@ -121,6 +130,27 @@ class LevelLightSystem {
     return true;
   }
 
+  applyBudget(snapshot = {}) {
+    this._budget = { ...this._budget, ...snapshot };
+    const shadowsEnabled =
+      this._budget.shadowsEnabled !== false && this._budget.shadowCastersEnabled !== false;
+    const maxCasters = Math.max(0, Math.floor(this._budget.maxShadowCasters ?? this._shadowCasterLimit));
+    const mapSize = this._budget.shadowMapSize ?? 512;
+    let enabledCasters = 0;
+
+    for (const record of this.list) {
+      const enableShadow = Boolean(record.alive && record._wantsShadow && shadowsEnabled && enabledCasters < maxCasters);
+      record.light.castShadow = enableShadow;
+      if (enableShadow) {
+        enabledCasters++;
+        record.light.shadow?.mapSize?.set?.(mapSize, mapSize);
+      }
+
+      record.pool.userData.budgetCost = 'light-volume';
+      record.pool.visible = record.alive && this._budget.lightVolumesEnabled !== false;
+    }
+  }
+
   update(dt) {
     this._time += dt;
     for (const record of this.list) {
@@ -189,9 +219,11 @@ class LevelLightSystem {
     if (hasTarget) {
       light = new THREE.SpotLight(color, lightDef.intensity ?? 12, range, lightDef.angle ?? Math.PI / 4.7, 0.78, 2);
       light.target.position.copy(target);
-      light.castShadow = lightDef.shadows ?? (role === 'key' || role === 'trap');
+      const wantsShadow = lightDef.shadows ?? (role === 'key' || role === 'trap');
+      light.castShadow = wantsShadow && this._shadowCasterCount < this._shadowCasterLimit;
       if (light.castShadow) {
-        light.shadow.mapSize.set(640, 640);
+        this._shadowCasterCount++;
+        light.shadow.mapSize.set(512, 512);
         light.shadow.bias = -0.00018;
         light.shadow.normalBias = 0.018;
         light.shadow.camera.near = 0.4;
@@ -227,6 +259,7 @@ class LevelLightSystem {
       fixture,
       pool,
       bulb,
+      _wantsShadow: hasTarget ? (lightDef.shadows ?? (role === 'key' || role === 'trap')) : false,
       _baseLightIntensity: light.intensity,
       _baseEmissiveIntensity: bulb.material.emissiveIntensity ?? 1,
       _basePoolOpacity: pool.userData.baseOpacity ?? 0.075,
@@ -277,6 +310,7 @@ class LevelLightSystem {
     mesh.userData.perceptionIgnore = true;
     mesh.userData.lightVolume = true;
     mesh.userData.combatIgnore = true;
+    mesh.userData.budgetCost = 'light-volume';
     return mesh;
   }
 
@@ -308,7 +342,7 @@ class LevelLightSystem {
     record.alive = visible;
     record.light.visible = visible;
     record.light.intensity = visible ? record._baseLightIntensity : 0;
-    record.pool.visible = visible;
+    record.pool.visible = visible && this._budget.lightVolumesEnabled !== false;
     record.bulb.visible = visible || !record.broken;
     record.bulb.userData.breakableLight = visible && record.breakable;
     if (record.bulb.material?.emissiveIntensity !== undefined) {

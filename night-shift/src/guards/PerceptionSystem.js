@@ -11,6 +11,7 @@ const _dir = new THREE.Vector3();
 const _flatDir = new THREE.Vector3();
 const _lightDir = new THREE.Vector3();
 const _beamDir = new THREE.Vector3();
+const _guardEyeOffset = new THREE.Vector3(0, 1.65, 0);
 const VISUAL_LOST_GRACE = 0.35;
 
 export class PerceptionSystem {
@@ -28,42 +29,64 @@ export class PerceptionSystem {
     this._occluderSource = null;
     this._occluderSourceLength = -1;
     this._cachedOccluders = null;
+    this._perceptionInterval = options.perceptionInterval ?? 1 / 12;
+    this._perceptionAccum = 0;
+    this._illuminationTime = 0;
+    this._illuminationCacheTtl = options.illuminationCacheTtl ?? 0.12;
+    this._illuminationCache = new Map();
     this.bodySystem = options.bodySystem ?? (options.enableBodies === false ? null : new BodySystem(scene, bus, options.bodyOptions));
 
     this.bus?.on('noise', (payload) => this.reportNoise(payload));
     this.bus?.on('player:noise', (payload) => this.reportNoise(payload));
     this.bus?.on('player:distract', (payload) => this.reportNoise(payload));
     this.bus?.on('weapon:fired', (payload) => this.reportNoise({ ...payload, kind: 'shot' }));
+    this.bus?.on('light:broken', () => this._illuminationCache.clear());
   }
 
   update(dt, player, partner, guardOrGuards, options = {}) {
     const guards = Array.isArray(guardOrGuards) ? guardOrGuards : [guardOrGuards].filter(Boolean);
     const activeGuards = [];
+    this._illuminationTime += dt;
+    this._perceptionAccum += dt;
     for (const noise of this.noises) noise.ttl -= dt;
 
     for (const guard of guards) {
       if (!guard?.alive || guard.state === 'dead') continue;
       activeGuards.push(guard);
+    }
 
+    const shouldScan = options.forcePerception === true || this._perceptionAccum >= this._perceptionInterval;
+    if (!shouldScan) {
+      if (options.updateBodies !== false) {
+        this.bodySystem?.update(dt, { player, guards: activeGuards, seat: options.seat });
+      }
+      this.noises = this.noises.filter((noise) => noise.ttl > 0);
+      return;
+    }
+
+    const perceptionDt = Math.min(this._perceptionAccum, 0.25);
+    this._perceptionAccum = 0;
+
+    for (const guard of activeGuards) {
       const key = guardKey(guard);
-      const heard = this._applyHearing(dt, player, guard);
+      const heard = this._applyHearing(perceptionDt, player, guard);
       const best = this._scanTargets(player, partner, guard);
 
       if (best.score > 0.01) {
         if (guard.brain) {
-          guard.brain.ingestPerception(best.score, dt, { seenPos: toPlainVector(best.position) });
+          guard.brain.ingestPerception(best.score, perceptionDt, { seenPos: toPlainVector(best.position) });
           guard.suspicion = guard.brain.suspicion;
         } else {
-          guard.suspicion += best.score * CONFIG.guard.suspicionRise * dt;
+          guard.suspicion += best.score * CONFIG.guard.suspicionRise * perceptionDt;
           guard.noticeVisual?.(best.position, best.score);
         }
         this._hadVisualContactByGuard.set(key, true);
         this._zeroVisualTimeByGuard.set(key, 0);
       } else {
-        guard.brain?.ingestPerception(0, dt);
+        guard.brain?.ingestPerception(0, perceptionDt);
         if (guard.brain) guard.suspicion = guard.brain.suspicion;
 
-        const zeroVisualTime = (this._zeroVisualTimeByGuard.get(key) ?? 0) + dt;
+        const zeroVisualTime = (this._zeroVisualTimeByGuard.get(key) ?? 0) + perceptionDt;
         this._zeroVisualTimeByGuard.set(key, zeroVisualTime);
         if (!guard.brain && this._hadVisualContactByGuard.get(key) && zeroVisualTime > VISUAL_LOST_GRACE) {
           guard.loseVisual?.();
@@ -72,7 +95,7 @@ export class PerceptionSystem {
       }
 
       if (best.score <= 0.01 && !heard && guard.state !== 'combat' && !guard.brain) {
-        guard.suspicion -= CONFIG.guard.suspicionDecay * dt;
+        guard.suspicion -= CONFIG.guard.suspicionDecay * perceptionDt;
       }
 
       guard.suspicion = clamp(guard.suspicion, 0, CONFIG.guard.alarmThreshold);
@@ -115,10 +138,13 @@ export class PerceptionSystem {
   }
 
   _scanTargets(player, partner, guard) {
-    const targets = [
-      this._makeTarget('player', player, this.attention?.localVisibility ?? 1),
-      this._makeTarget('partner', partner, this.attention?.partnerVisibility ?? 1),
-    ].filter(Boolean);
+    const targets = [];
+    const playerTarget = this._makeTarget('player', player, this.attention?.localVisibility ?? 1);
+    if (playerTarget) targets.push(playerTarget);
+    if (!this._shouldSkipPartner(partner)) {
+      const partnerTarget = this._makeTarget('partner', partner, this.attention?.partnerVisibility ?? 1);
+      if (partnerTarget) targets.push(partnerTarget);
+    }
 
     let best = {
       score: 0,
@@ -140,7 +166,7 @@ export class PerceptionSystem {
   }
 
   _evaluateTarget(target, guard) {
-    const eye = guard.getEyePosition?.(_eye) ?? _eye.copy(guard.position).add(new THREE.Vector3(0, 1.65, 0));
+    const eye = guard.getEyePosition?.(_eye) ?? _eye.copy(guard.position).add(_guardEyeOffset);
     const targetPoint = target.point;
 
     _dir.subVectors(targetPoint, eye);
@@ -275,6 +301,12 @@ export class PerceptionSystem {
     return clamp(base * clamp(strength, 0, 1), 0, 1);
   }
 
+  _shouldSkipPartner(partner) {
+    if (!partner) return true;
+    const opacity = firstFinite(partner._opacity, partner.opacity, partner.group?.material?.opacity);
+    return Number.isFinite(opacity) && opacity < 0.04;
+  }
+
   _makeTarget(type, entity, visibility) {
     if (!entity || entity.alive === false || entity.dead === true) return null;
 
@@ -314,11 +346,17 @@ export class PerceptionSystem {
   }
 
   _sampleIllumination(worldPosition) {
+    const key = illuminationKey(worldPosition);
+    const cached = this._illuminationCache.get(key);
+    if (cached && this._illuminationTime - cached.time <= this._illuminationCacheTtl) {
+      return cached.value;
+    }
+
     const sampled = this.lights?.sampleIllumination?.(worldPosition);
-    if (Number.isFinite(sampled)) return clamp(sampled, 0, 1);
+    if (Number.isFinite(sampled)) return this._cacheIllumination(key, clamp(sampled, 0, 1));
 
     const list = Array.isArray(this.lights?.list) ? this.lights.list : [];
-    if (list.length === 0) return 0;
+    if (list.length === 0) return this._cacheIllumination(key, 0);
 
     let total = 0;
     for (const light of list) {
@@ -336,7 +374,13 @@ export class PerceptionSystem {
       total += intensity * falloff;
     }
 
-    return clamp(total / 3, 0, 1);
+    return this._cacheIllumination(key, clamp(total / 3, 0, 1));
+  }
+
+  _cacheIllumination(key, value) {
+    if (this._illuminationCache.size > 96) this._illuminationCache.clear();
+    this._illuminationCache.set(key, { time: this._illuminationTime, value });
+    return value;
   }
 
   _lightReachesTarget(lightPosition, targetPosition, distance) {
@@ -414,6 +458,14 @@ function entityBasePosition(entity, out) {
 function toVector3(value, out) {
   if (value?.isVector3) return out.copy(value);
   return out.set(value?.x ?? 0, value?.y ?? 0, value?.z ?? 0);
+}
+
+function illuminationKey(value) {
+  return `${Math.round((value?.x ?? 0) * 4)}:${Math.round((value?.y ?? 0) * 4)}:${Math.round((value?.z ?? 0) * 4)}`;
+}
+
+function firstFinite(...values) {
+  return values.find((value) => Number.isFinite(value));
 }
 
 function isDescendantOf(object, root) {

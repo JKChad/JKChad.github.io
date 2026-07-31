@@ -153,6 +153,15 @@ export class LightSystem {
     this._time = 0;
     this._raycaster = new THREE.Raycaster();
     this._occluders = room?.occluders ?? [];
+    this._budget = {
+      shadowsEnabled: true,
+      shadowCastersEnabled: true,
+      maxShadowCasters: 1,
+      shadowMapSize: 512,
+      lightVolumesEnabled: true,
+    };
+    this._shadowCasterLimit = 1;
+    this._shadowCasterCount = 0;
 
     scene.add(this.group);
 
@@ -207,6 +216,7 @@ export class LightSystem {
   _tagLightVolume(mesh) {
     mesh.userData.perceptionIgnore = true;
     mesh.userData.lightVolume = true;
+    mesh.userData.budgetCost = 'light-volume';
     return mesh;
   }
 
@@ -327,9 +337,11 @@ export class LightSystem {
     light.name = `${id} real spot light`;
     light.position.copy(position);
     light.target.position.copy(target);
-    light.castShadow = shadows;
-    if (shadows) {
-      light.shadow.mapSize.set(768, 768);
+    const wantsShadow = Boolean(shadows);
+    light.castShadow = wantsShadow && this._shadowCasterCount < this._shadowCasterLimit;
+    if (light.castShadow) {
+      this._shadowCasterCount++;
+      light.shadow.mapSize.set(512, 512);
       light.shadow.bias = -0.00018;
       light.shadow.normalBias = 0.018;
       light.shadow.camera.near = 0.4;
@@ -354,6 +366,7 @@ export class LightSystem {
       pool,
       bulb,
       damaged,
+      _wantsShadow: wantsShadow,
       _baseLightIntensity: lightIntensity,
       _baseEmissiveIntensity: 1.4,
       _basePoolOpacity: 0.072,
@@ -632,6 +645,32 @@ export class LightSystem {
     if (!best || bestDist > 1.35) return null;
     this.breakLight(best.id);
     return best;
+  }
+
+  applyBudget(snapshot = {}) {
+    this._budget = { ...this._budget, ...snapshot };
+    const shadowsEnabled =
+      this._budget.shadowsEnabled !== false && this._budget.shadowCastersEnabled !== false;
+    const maxCasters = Math.max(0, Math.floor(this._budget.maxShadowCasters ?? this._shadowCasterLimit));
+    const mapSize = this._budget.shadowMapSize ?? 512;
+    let enabledCasters = 0;
+
+    for (const record of this.list) {
+      const light = record.light;
+      if (!light) continue;
+
+      const enableShadow = Boolean(record._wantsShadow && shadowsEnabled && enabledCasters < maxCasters);
+      light.castShadow = enableShadow;
+      if (enableShadow) {
+        enabledCasters++;
+        light.shadow?.mapSize?.set?.(mapSize, mapSize);
+      }
+
+      if (record.pool) {
+        record.pool.userData.budgetCost = 'light-volume';
+        record.pool.visible = record.alive && this._budget.lightVolumesEnabled !== false;
+      }
+    }
   }
 
   update(dt) {

@@ -37,7 +37,14 @@ const logs = [];
 const browser = await puppeteer.launch({
   executablePath: '/usr/bin/google-chrome',
   headless: true,
-  args: ['--no-sandbox', '--disable-gpu', '--use-gl=angle', '--use-angle=swiftshader', '--window-size=1280,720'],
+  args: [
+    '--no-sandbox',
+    '--disable-gpu',
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader',
+    '--window-size=1280,720',
+  ],
   defaultViewport: { width: 1280, height: 720 },
 });
 
@@ -56,6 +63,7 @@ const bootState = await page.evaluate(() => ({
   hasBtn: !!document.getElementById('start-btn'),
   bootText: document.querySelector('.boot-copy')?.textContent || '',
   canvasCount: document.querySelectorAll('canvas').length,
+  visualHarnessInstalled: !!window.__nightShiftVisual,
 }));
 console.log('bootState', bootState);
 
@@ -71,6 +79,7 @@ const after = await page.evaluate(() => ({
   mode: document.querySelector('[data-mode]')?.textContent || '',
   fps: document.querySelector('[data-fps]')?.textContent || '',
   bodyClass: document.body.className,
+  visualHarnessInstalled: !!window.__nightShiftVisual,
 }));
 console.log('after', after);
 
@@ -88,7 +97,13 @@ await page.mouse.click(640, 360, { button: 'left' });
 await new Promise((r) => setTimeout(r, 1000));
 await page.screenshot({ path: join(OUT, '03-interact.png') });
 
-const report = { ok: after.canvasCount > 0 && errors.length === 0, errors, logs: logs.slice(-40), bootState, after };
+const report = {
+  ok: after.canvasCount > 0 && errors.length === 0 && !bootState.visualHarnessInstalled && !after.visualHarnessInstalled,
+  errors,
+  logs: logs.slice(-40),
+  bootState,
+  after,
+};
 writeFileSync(join(OUT, 'smoke-report.json'), JSON.stringify(report, null, 2));
 console.log(JSON.stringify(report, null, 2));
 

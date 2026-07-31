@@ -5,6 +5,7 @@ import { AttentionMeter } from './AttentionMeter.js';
 import { Economy } from './Economy.js';
 import { ModeManager } from './ModeManager.js';
 import { AudioManager } from '../audio/AudioManager.js';
+import { installAudio } from '../audio/installAudio.js';
 import { HUD } from '../ui/HUD.js';
 import { FPSController } from '../player/FPSController.js';
 import { WeaponSystem } from '../player/WeaponSystem.js';
@@ -67,6 +68,7 @@ export class Game {
     this.guard = new Guard(this.scene, this.bus, this.room.patrolPath);
     this.perception = new PerceptionSystem(this.scene, this.bus, this.lights, this.attention, this.modes);
     this.post = new PostFx(this.renderer, this.scene, this.player.camera);
+    this.audioSystems = installAudio(this);
 
     this._bindBus();
     window.addEventListener('resize', () => this._onResize());
@@ -156,6 +158,7 @@ export class Game {
     this.guard.update(dt, this.player, this.modes.mode, this.combat);
     this.combat.update(dt, this.player, this.modes.mode);
     this.economy.update(dt, this.modes.mode);
+    this.audioSystems.update(dt);
     this.hud.setSuspicion(this.guard?.suspicion ?? 0);
     this.hud.setMode(this.modes.mode);
     this.hud.update(dt);

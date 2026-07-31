@@ -11,6 +11,11 @@ const bootCopy = boot?.querySelector('.boot-copy');
 let game = null;
 let starting = false;
 
+function isVisualMode() {
+  const params = new URLSearchParams(window.location.search);
+  return window.location.hash === '#visual=1' || params.get('visual') === '1';
+}
+
 function hasWebGL() {
   try {
     const canvas = document.createElement('canvas');
@@ -67,7 +72,7 @@ function wireAttentionTransfer(targetGame) {
   window.addEventListener('blur', () => emit(0));
 }
 
-function bootGame() {
+async function bootGame() {
   if (!app || !ui || !startBtn) {
     setBootError('Boot markup is missing. Reload the contract package and try again.');
     return;
@@ -79,7 +84,20 @@ function bootGame() {
   }
 
   try {
+    let installVisualHarness = null;
+    if (isVisualMode()) {
+      const visual = await import('./testing/VisualHarness.js');
+      visual.installVisualDeterminism();
+      installVisualHarness = visual.installVisualHarness;
+    }
+
     game = new Game(app, ui);
+    if (installVisualHarness) {
+      installVisualHarness(game);
+      hideBoot();
+      return;
+    }
+
     installNet(game, ui);
     wireAttentionTransfer(game);
   } catch (error) {

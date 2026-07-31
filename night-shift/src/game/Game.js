@@ -145,6 +145,7 @@ export class Game {
     this.combat.update(dt, this.player, this.modes.mode);
     this.economy.update(dt, this.modes.mode);
     this.hud.setSuspicion(this.guard?.suspicion ?? 0);
+    this.hud.setMode(this.modes.mode);
     this.hud.update(dt);
     this.post.update(dt, {
       mode: this.modes.mode,

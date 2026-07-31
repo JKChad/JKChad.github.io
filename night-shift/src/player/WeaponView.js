@@ -78,8 +78,9 @@ export class WeaponView {
     this.group.add(this.weapon);
     this._buildMesh();
 
-    this._hipPos = new THREE.Vector3(0.34, -0.31, -0.64);
-    this._adsPos = new THREE.Vector3(0.006, -0.175, -0.54);
+    // Bring the SMG into the lower-right frustum so the silhouette reads in dim light.
+    this._hipPos = new THREE.Vector3(0.22, -0.22, -0.48);
+    this._adsPos = new THREE.Vector3(0.0, -0.145, -0.42);
     this._hipRot = new THREE.Euler(-0.035, 0.2, -0.025, 'XYZ');
     this._adsRot = new THREE.Euler(-0.012, 0.006, 0.0, 'XYZ');
 

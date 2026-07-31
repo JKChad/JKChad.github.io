@@ -26,12 +26,13 @@ export class PostFx {
     this._lastDt = 0;
     this._reflectionFallback = null;
 
+    // UnsignedByte is far more stable on iGPU / SwiftShader than HalfFloat.
     this.composer = new EffectComposer(renderer, {
-      frameBufferType: THREE.HalfFloatType,
-      // SMAA handles AA — avoid MSAA+SMAA stacking cost on iGPUs.
+      frameBufferType: THREE.UnsignedByteType,
       multisampling: 0,
       stencilBuffer: false,
     });
+    this._budget = { bloomEnabled: true, smaaEnabled: true };
 
     this.renderPass = new RenderPass(scene, camera);
     this.composer.addPass(this.renderPass);
@@ -127,12 +128,13 @@ export class PostFx {
   }
 
   applyBudget(snapshot = {}) {
+    this._budget = snapshot || this._budget;
     const bloomEnabled = snapshot.bloomEnabled !== false;
     const smaaEnabled = snapshot.smaaEnabled !== false;
 
     if (this.bloomPass) this.bloomPass.enabled = bloomEnabled;
     if (this.smaaPass) this.smaaPass.enabled = smaaEnabled;
-    if (this.ssrPass) this.ssrPass.enabled = snapshot.pixelRatio === undefined || snapshot.pixelRatio >= 0.82;
+    if (this.ssrPass) this.ssrPass.enabled = snapshot.pixelRatio === undefined || snapshot.pixelRatio >= 0.95;
   }
 
   update(dt, { mode = 'stealth', visibility = 1, budget = null } = {}) {

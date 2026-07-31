@@ -4,6 +4,9 @@ import { clamp } from '../utils/math.js';
 import { createPatrolPath, PatrolBrain } from './Patrol.js';
 
 const EYE_HEIGHT = 1.68;
+const ALERT_SUSPICION = 0.24;
+const INVESTIGATE_SUSPICION = 0.56;
+const VISUAL_GRACE = 0.42;
 const _tmpA = new THREE.Vector3();
 const _tmpB = new THREE.Vector3();
 const _tmpC = new THREE.Vector3();
@@ -20,10 +23,19 @@ export class Guard {
     this.suspicion = 0;
     this.state = 'patrol';
     this.hp = 100;
+    this.flashlightRange = 12;
+    this.flashlightFov = Math.PI / 7;
+    this.lastSeenPos = null;
+    this.confidence = 0;
+    this.visualContactTimer = 0;
 
     this.patrol = new PatrolBrain(patrolPath);
     this.investigationPoint = null;
+    this.investigationKind = null;
     this.investigateTimer = 0;
+    this.alertLookTimer = 0;
+    this.searchLostTimer = 0;
+    this.searchAnchor = null;
     this.combatShotTimer = 0.45;
     this.combatStrafePhase = Math.random() * Math.PI * 2;
 
@@ -48,12 +60,25 @@ export class Guard {
       this.enterCombat();
     }
 
+    this.visualContactTimer = Math.max(0, this.visualContactTimer - dt);
+    this.confidence = clamp(this.confidence - dt * 0.18, 0, 1);
+
+    if (this.state === 'chase' && this.visualContactTimer <= 0 && this.lastSeenPos) {
+      this.loseVisual();
+    }
+
     switch (this.state) {
+      case 'alertLook':
+        this._updateAlertLook(dt);
+        break;
       case 'investigate':
         this._updateInvestigate(dt);
         break;
       case 'chase':
         this._updateChase(dt, player);
+        break;
+      case 'searchLost':
+        this._updateSearchLost(dt);
         break;
       case 'combat':
         this._updateCombat(dt, player, combat);
@@ -74,6 +99,7 @@ export class Guard {
     if (!position) return;
 
     this.investigationPoint = toVector3(position).clone();
+    this.investigationKind = kind;
     this.investigateTimer = kind === 'shot' ? 0.25 : 1.35;
     this.suspicion = clamp(
       this.suspicion + (kind === 'shot' ? 0.75 : kind === 'cough' ? 0.35 : 0.25),
@@ -81,6 +107,48 @@ export class Guard {
       CONFIG.guard.alarmThreshold,
     );
     this._setState(kind === 'shot' ? 'chase' : 'investigate');
+  }
+
+  noticeVisual(position, confidence = 0) {
+    if (!this.alive || this.state === 'dead' || this.state === 'combat') return;
+    if (!position) return;
+
+    const seen = toVector3(position).clone();
+    this.lastSeenPos = seen;
+    this.investigationPoint = seen.clone();
+    this.investigationKind = 'sighting';
+    this.visualContactTimer = VISUAL_GRACE;
+    this.confidence = clamp(Math.max(this.confidence, confidence), 0, 1);
+
+    if (this.suspicion >= CONFIG.guard.alarmThreshold) {
+      this._setState('chase');
+      return;
+    }
+
+    if (this.state === 'chase') return;
+
+    if (this.suspicion >= INVESTIGATE_SUSPICION || this.confidence >= 0.48) {
+      this.investigateTimer = Math.max(this.investigateTimer, 1.0);
+      this._setState('investigate');
+      return;
+    }
+
+    if (this.suspicion >= ALERT_SUSPICION || this.confidence >= 0.2) {
+      this.alertLookTimer = Math.max(this.alertLookTimer, 0.75);
+      this._setState('alertLook');
+    }
+  }
+
+  loseVisual() {
+    if (!this.alive || this.state === 'dead' || this.state === 'combat') return;
+    if (!this.lastSeenPos) return;
+    if (!['alertLook', 'investigate', 'chase'].includes(this.state)) return;
+
+    this.searchAnchor = this.lastSeenPos.clone();
+    this.investigationPoint = this.searchAnchor.clone();
+    this.investigationKind = 'lostVisual';
+    this.searchLostTimer = this.state === 'chase' ? 3.2 : 1.8;
+    this._setState('searchLost');
   }
 
   enterCombat() {
@@ -122,6 +190,27 @@ export class Guard {
     this.patrol.update(dt, this.position, this.forward, CONFIG.guard.patrolSpeed);
   }
 
+  _updateAlertLook(dt) {
+    const lookPoint = this.lastSeenPos ?? this.investigationPoint;
+    if (!lookPoint) {
+      this._setState('patrol');
+      return;
+    }
+
+    _tmpA.subVectors(lookPoint, this.position);
+    _tmpA.y = 0;
+    if (_tmpA.lengthSq() > 0.0001) this._turnToward(_tmpA.normalize(), dt, 18);
+
+    this.alertLookTimer -= dt;
+    if (this.suspicion >= INVESTIGATE_SUSPICION || this.confidence >= 0.42) {
+      this.investigateTimer = Math.max(this.investigateTimer, 1.1);
+      this._setState('investigate');
+    } else if (this.alertLookTimer <= 0) {
+      this.investigateTimer = Math.max(this.investigateTimer, 0.9);
+      this._setState('investigate');
+    }
+  }
+
   _updateInvestigate(dt) {
     if (!this.investigationPoint) {
       this._setState('patrol');
@@ -140,22 +229,62 @@ export class Guard {
       }
 
       if (this.investigateTimer <= 0) {
-        this.investigationPoint = null;
-        this._setState('patrol');
+        if (this.investigationKind === 'sighting' && this.lastSeenPos) {
+          this.loseVisual();
+        } else {
+          this.investigationPoint = null;
+          this.investigationKind = null;
+          this._setState('patrol');
+        }
       }
     }
   }
 
   _updateChase(dt, player) {
-    const target = getEntityPosition(player, _tmpA);
+    const hasLiveVisual = this.visualContactTimer > 0 && this.investigationPoint;
+    const target = hasLiveVisual ? _tmpA.copy(this.investigationPoint) : getEntityPosition(player, _tmpA);
     if (!target) {
-      this._setState('investigate');
+      this.loseVisual();
       return;
     }
 
+    if (hasLiveVisual) this.lastSeenPos = target.clone();
     this.investigationPoint = target.clone();
     const arrived = this._moveToward(target, CONFIG.guard.chaseSpeed, dt, 1.4);
-    if (arrived) this._setState('combat');
+    if (arrived) {
+      if (hasLiveVisual) {
+        this._setState('combat');
+      } else {
+        this.loseVisual();
+      }
+    }
+  }
+
+  _updateSearchLost(dt) {
+    const anchor = this.searchAnchor ?? this.lastSeenPos;
+    if (!anchor) {
+      this._setState('patrol');
+      return;
+    }
+
+    const arrived = this._moveToward(anchor, CONFIG.guard.patrolSpeed * 1.15, dt, 0.7);
+    if (arrived) {
+      this.searchLostTimer -= dt;
+      const scanYaw = Math.sin(performance.now() * 0.0032) * 1.15;
+      _tmpA.subVectors(anchor, this.position);
+      _tmpA.y = 0;
+      if (_tmpA.lengthSq() <= 0.0001) _tmpA.copy(this.forward);
+      _tmpA.normalize().applyAxisAngle(_up, scanYaw);
+      this._turnToward(_tmpA, dt, 6.2);
+    }
+
+    if (this.searchLostTimer <= 0) {
+      this.searchAnchor = null;
+      this.investigationPoint = null;
+      this.investigationKind = null;
+      this.lastSeenPos = null;
+      this._setState('patrol');
+    }
   }
 
   _updateCombat(dt, player) {
@@ -227,6 +356,9 @@ export class Guard {
     if (this.state === state) return;
     const previous = this.state;
     this.state = state;
+    if (state === 'alertLook' && this.lastSeenPos) {
+      this._turnImmediatelyToward(this.lastSeenPos);
+    }
     this.bus?.emit('guard:state', { guard: this, state, previous });
   }
 
@@ -250,7 +382,9 @@ export class Guard {
 
     const eye = this.getEyePosition(_tmpA);
     this.flashlight.position.copy(this.mesh.worldToLocal(eye.clone()));
-    this.flashlightTarget.position.copy(eye).addScaledVector(this.forward, 14);
+    this.flashlight.distance = this.flashlightRange;
+    this.flashlight.angle = this.flashlightFov;
+    this.flashlightTarget.position.copy(eye).addScaledVector(this.forward, this.flashlightRange);
     this.flashlightTarget.position.y -= 0.35;
   }
 
@@ -321,7 +455,7 @@ export class Guard {
   }
 
   _createFlashlight() {
-    this.flashlight = new THREE.SpotLight(0xf4f0d0, 4.5, 18, Math.PI / 7, 0.55, 1.6);
+    this.flashlight = new THREE.SpotLight(0xf4f0d0, 4.5, this.flashlightRange, this.flashlightFov, 0.55, 1.6);
     this.flashlight.name = 'GuardFlashlight';
     this.flashlight.castShadow = true;
     this.flashlight.shadow.mapSize.set(512, 512);

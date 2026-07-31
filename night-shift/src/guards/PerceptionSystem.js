@@ -8,6 +8,7 @@ const _target = new THREE.Vector3();
 const _dir = new THREE.Vector3();
 const _flatDir = new THREE.Vector3();
 const _lightDir = new THREE.Vector3();
+const _beamDir = new THREE.Vector3();
 
 export class PerceptionSystem {
   constructor(scene, bus, lights, attention, modes) {
@@ -19,7 +20,7 @@ export class PerceptionSystem {
     this.raycaster = new THREE.Raycaster();
     this.noises = [];
     this._spottedLatched = false;
-    this._visualNudgeCooldown = 0;
+    this._hadVisualContact = false;
 
     this.bus?.on('noise', (payload) => this.reportNoise(payload));
     this.bus?.on('player:noise', (payload) => this.reportNoise(payload));
@@ -30,17 +31,16 @@ export class PerceptionSystem {
   update(dt, player, partner, guard) {
     if (!guard?.alive || guard.state === 'dead') return;
 
-    this._visualNudgeCooldown = Math.max(0, this._visualNudgeCooldown - dt);
-
     const heard = this._applyHearing(dt, player, guard);
     const best = this._scanTargets(player, partner, guard);
 
     if (best.score > 0.01) {
       guard.suspicion += best.score * CONFIG.guard.suspicionRise * dt;
-      if (best.score > 0.22 && this._visualNudgeCooldown <= 0 && guard.state === 'patrol') {
-        guard.investigate?.(best.position, 'sighting');
-        this._visualNudgeCooldown = 1.2;
-      }
+      guard.noticeVisual?.(best.position, best.score);
+      this._hadVisualContact = true;
+    } else if (this._hadVisualContact) {
+      guard.loseVisual?.();
+      this._hadVisualContact = false;
     }
 
     if (best.score <= 0.01 && !heard && guard.state !== 'combat') {
@@ -60,6 +60,7 @@ export class PerceptionSystem {
         score: best.score,
         illumination: best.illumination,
         visibility: best.visibility,
+        flashlight: best.flashlight,
       });
     }
 
@@ -89,6 +90,7 @@ export class PerceptionSystem {
       target: null,
       position: null,
       illumination: 0,
+      flashlight: 0,
       visibility: 0,
     };
 
@@ -108,10 +110,13 @@ export class PerceptionSystem {
 
     _dir.subVectors(targetPoint, eye);
     const distance = _dir.length();
-    if (distance <= 0.001 || distance > CONFIG.guard.viewDistance) {
+    const flashlightRange = guard.flashlightRange ?? 12;
+    const maxDistance = Math.max(CONFIG.guard.viewDistance, flashlightRange);
+    if (distance <= 0.001 || distance > maxDistance) {
       return this._emptyResult(targetPoint, target.visibility);
     }
 
+    _beamDir.copy(_dir).normalize();
     _flatDir.copy(_dir);
     _flatDir.y = 0;
     if (_flatDir.lengthSq() <= 0.0001) return this._emptyResult(targetPoint, target.visibility);
@@ -120,29 +125,54 @@ export class PerceptionSystem {
     const halfFov = THREE.MathUtils.degToRad(CONFIG.guard.fovDeg * 0.5);
     const fovDotThreshold = Math.cos(halfFov);
     const dot = clamp(guard.forward.dot(_flatDir), -1, 1);
-    if (dot < fovDotThreshold) return this._emptyResult(targetPoint, target.visibility);
+    const inViewCone = distance <= CONFIG.guard.viewDistance && dot >= fovDotThreshold;
+
+    const flashlightHalfFov = guard.flashlightFov ?? Math.PI / 7;
+    const flashlightDotThreshold = Math.cos(flashlightHalfFov);
+    const flashlightDot = clamp(guard.forward.dot(_beamDir), -1, 1);
+    const inFlashlightCone = distance <= flashlightRange && flashlightDot >= flashlightDotThreshold;
+    if (!inViewCone && !inFlashlightCone) return this._emptyResult(targetPoint, target.visibility);
 
     if (!this._hasLineOfSight(eye, targetPoint, distance, [guard.mesh, target.root])) {
       return this._emptyResult(targetPoint, target.visibility);
     }
 
     const illumination = this._sampleIllumination(targetPoint);
-    const lightTerm = smoothstep(CONFIG.guard.lightThreshold, 1, illumination);
-    const distanceFalloff = 1 - smoothstep(CONFIG.guard.viewDistance * 0.35, CONFIG.guard.viewDistance, distance);
-    const fovFalloff = smoothstep(fovDotThreshold, 1, dot);
     const visibility = clamp(target.visibility, 0, 1);
 
-    let score = visibility * lightTerm * distanceFalloff * fovFalloff;
+    let roomScore = 0;
+    if (inViewCone) {
+      const lightTerm = smoothstep(CONFIG.guard.lightThreshold, 1, illumination);
+      const distanceFalloff = 1 - smoothstep(CONFIG.guard.viewDistance * 0.35, CONFIG.guard.viewDistance, distance);
+      const fovFalloff = smoothstep(fovDotThreshold, 1, dot);
+      roomScore = visibility * lightTerm * distanceFalloff * fovFalloff;
+    }
+
+    let flashlight = 0;
+    let flashlightScore = 0;
+    if (inFlashlightCone) {
+      const beamAngleFalloff = smoothstep(flashlightDotThreshold, 1, flashlightDot);
+      const beamDistanceFalloff = 1 - smoothstep(flashlightRange * 0.45, flashlightRange, distance);
+      flashlight = clamp(beamAngleFalloff * beamDistanceFalloff, 0, 1);
+      flashlightScore = visibility * flashlight * 0.95;
+    }
+
+    const combinedIllumination = clamp(illumination + flashlight * 0.85, 0, 1);
+    let score = clamp(roomScore + flashlightScore, 0, 1);
 
     if (visibility < 0.2) {
-      const veryCloseAndBright = distance < 2.25 && illumination > 0.86;
+      const veryCloseAndBright = distance < 2.25 && combinedIllumination > 0.86;
+      const caughtInBeam = distance < flashlightRange * 0.55 && flashlight > 0.65;
       score *= veryCloseAndBright ? 0.55 : 0.08;
+      if (caughtInBeam) score = Math.max(score, visibility * flashlight * 0.28);
     }
 
     return {
       score: clamp(score, 0, 1),
       position: targetPoint.clone(),
-      illumination,
+      illumination: combinedIllumination,
+      ambientIllumination: illumination,
+      flashlight,
       visibility,
     };
   }
@@ -280,6 +310,8 @@ export class PerceptionSystem {
       score: 0,
       position: position?.clone?.() ?? null,
       illumination: 0,
+      ambientIllumination: 0,
+      flashlight: 0,
       visibility: clamp(visibility ?? 0, 0, 1),
     };
   }

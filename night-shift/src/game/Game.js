@@ -16,6 +16,7 @@ import { PartnerGhost } from '../player/PartnerGhost.js';
 import { CombatSystem } from '../combat/CombatSystem.js';
 import { PostFx } from '../rendering/PostFx.js';
 import { FrameLock } from '../utils/FrameLock.js';
+import { PerfBudget } from '../utils/PerfBudget.js';
 
 /**
  * Vertical slice orchestrator — wires stealth conversation, light-as-map,
@@ -36,14 +37,16 @@ export class Game {
       powerPreference: 'high-performance',
       stencil: false,
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     container.appendChild(this.renderer.domElement);
+    this.perf = new PerfBudget(this.renderer);
+    this._lastRenderTime = performance.now();
+    this.objective = { extracted: false, extractRadius: 2.2, extractPos: new THREE.Vector3(12.5, 0, 8.5) };
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x07090d);
@@ -90,14 +93,13 @@ export class Game {
           : kind === 'cough'
             ? CONFIG.attention.coughSpike
             : CONFIG.attention.distractionSpike;
-      // Distraction draws attention TO local (noise), partner gets the ghost window.
-      // Design: "whoever makes noise holds attention" — so spike local.
+      // Making noise draws heat onto YOU so the partner gets the ghost window.
       this.attention.spikeLocal(spike);
-      // Actually core design: trade attention to buy partner invisibility.
-      // Making noise ON PURPOSE draws guards to YOU so partner fades.
-      // spikeLocal is correct.
       this.audio.play(kind === 'can' ? 'can' : 'cough');
       this.guard.hearNoise(this.player.position, kind);
+    });
+    this.bus.on('reload:phase', ({ phase }) => {
+      if (phase === 'magOut' || phase === 'magIn' || phase === 'rack') this.audio.play('reload');
     });
     this.bus.on('weapon:fired', (payload) => {
       this.economy.onShot();
@@ -120,37 +122,71 @@ export class Game {
     this.hud.setMode('stealth');
     this.running = true;
     this.clock.start();
-    this.frameLock.start((dt) => this._tick(dt));
+    this._lastRenderTime = performance.now();
+    this.frameLock.start(
+      (dt) => this._simulate(dt),
+      () => this._render(),
+    );
   }
 
-  _tick(dt) {
+  _simulate(dt) {
     if (!this.running) return;
 
-    // Input / systems
     this.attention.update(dt);
     this.player.update(dt, this.attention.localVisibility);
     this.weapon.update(dt);
-    this.partner.update(dt, this.player.position, this.player.yaw);
+    this.partner.update(dt, this.player.position, this.player.yaw, {
+      mode: this.modes.mode,
+      guardPos: this.guard?.position,
+    });
     this.lights.update(dt);
     this.perception.update(dt, this.player, this.partner, this.guard);
     this.guard.update(dt, this.player, this.modes.mode, this.combat);
     this.combat.update(dt, this.player, this.modes.mode);
     this.economy.update(dt, this.modes.mode);
+    this.hud.setSuspicion(this.guard?.suspicion ?? 0);
     this.hud.update(dt);
     this.post.update(dt, {
       mode: this.modes.mode,
       visibility: this.attention.localVisibility,
+      budget: this.perf.snapshot(),
     });
 
+    this._checkExtract();
+  }
+
+  _render() {
+    if (!this.running) return;
+    const now = performance.now();
+    const frameDt = (now - this._lastRenderTime) / 1000;
+    this._lastRenderTime = now;
+    this.perf.sample(frameDt);
+    this.post.applyBudget?.(this.perf.snapshot());
     this.post.render();
 
-    this._fpsAccum += dt;
+    this._fpsAccum += frameDt;
     this._fpsFrames++;
     if (this._fpsAccum >= 0.5) {
-      const fps = Math.round(this._fpsFrames / this._fpsAccum);
-      this.hud.setFps(fps);
+      this.hud.setFps(this.frameLock.fps || Math.round(this._fpsFrames / this._fpsAccum));
       this._fpsAccum = 0;
       this._fpsFrames = 0;
+    }
+  }
+
+  _checkExtract() {
+    if (this.objective.extracted) return;
+    const d = this.player.position.distanceTo(this.objective.extractPos);
+    this.hud.setExtractHint(
+      d < 7.5,
+      d < this.objective.extractRadius ? 'Hold position — cashing out' : 'Extract at the far door',
+    );
+    if (d < this.objective.extractRadius) {
+      this.objective.extracted = true;
+      const snap = this.economy.snapshot();
+      this.hud.banner(snap.wentLoud ? `EXTRACTED — PAID $${snap.net}` : `CLEAN EXTRACT — $${snap.net}`, 4);
+      this.hud.el.hint.textContent = snap.wentLoud
+        ? 'Loud finish. Ammo, damage, and hazard pay came out of your cut.'
+        : 'Stealth bonus banked. Attention is a conversation.';
     }
   }
 
@@ -160,6 +196,7 @@ export class Game {
     this.player.camera.aspect = w / h;
     this.player.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
+    this.renderer.setPixelRatio(this.perf.pixelRatio);
     this.post.setSize(w, h);
   }
 }

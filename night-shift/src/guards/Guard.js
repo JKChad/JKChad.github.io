@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
+import { AlertBrain, ALERT } from '../core/alert/AlertBrain.js';
 import { clamp } from '../utils/math.js';
 import { createPatrolPath, PatrolBrain } from './Patrol.js';
 
@@ -13,11 +14,20 @@ const _tmpA = new THREE.Vector3();
 const _tmpB = new THREE.Vector3();
 const _tmpC = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
+let nextGuardId = 1;
 
 export class Guard {
-  constructor(scene, bus, patrolPath = createPatrolPath()) {
+  constructor(scene, bus, patrolPath = createPatrolPath(), options = {}) {
     this.scene = scene;
     this.bus = bus;
+    this.id = options.id ?? `guard-${nextGuardId++}`;
+    this.brain = options.brain ?? new AlertBrain(this.id, { bus });
+    this.networkManaged = options.networkManaged === true;
+    this._lastBrainTier = this.brain.tier;
+    this._offAlertTier = this.bus?.on?.('alert:tier', (event) => {
+      if (event?.id === this.brain?.id) this._onBrainTier(event);
+    });
+
     this.mesh = this._createHumanoid();
     this.position = this.mesh.position;
     this.forward = new THREE.Vector3(0, 0, 1);
@@ -62,6 +72,8 @@ export class Guard {
       this.enterCombat();
     }
 
+    if (this.brain && !this.networkManaged) this.brain.update(dt);
+    this._syncStateFromBrain();
     this.visualContactTimer = Math.max(0, this.visualContactTimer - dt);
     this.confidence = clamp(this.confidence - dt * 0.18, 0, 1);
 
@@ -91,6 +103,7 @@ export class Guard {
         break;
     }
 
+    this._syncSuspicionFromBrain();
     this.suspicion = clamp(this.suspicion, 0, CONFIG.guard.alarmThreshold);
     this._updateFacing();
     this._updateFlashlight();
@@ -100,15 +113,23 @@ export class Guard {
     if (!this.alive || this.state === 'dead' || this.state === 'combat') return;
     if (!position) return;
 
-    this.investigationPoint = toVector3(position).clone();
+    const heard = toVector3(position).clone();
+    this.investigationPoint = heard.clone();
     this.investigationKind = kind;
     this.investigateTimer = kind === 'shot' ? 0.25 : 1.35;
-    this.suspicion = clamp(
-      this.suspicion + (kind === 'shot' ? 0.75 : kind === 'cough' ? 0.35 : 0.25),
-      0,
-      CONFIG.guard.alarmThreshold,
-    );
-    this._setState(kind === 'shot' ? 'chase' : 'investigate');
+    if (this.brain) {
+      const intensity = kind === 'shot' ? 1 : kind === 'body-radio' ? 0.85 : kind === 'cough' ? 0.55 : 0.4;
+      this.brain.hear(toPlainVector(heard), kind, intensity);
+      if (kind === 'shot') this.brain.setTier(ALERT.ALERT, 'shot');
+      this._syncStateFromBrain();
+    } else {
+      this.suspicion = clamp(
+        this.suspicion + (kind === 'shot' ? 0.75 : kind === 'cough' ? 0.35 : 0.25),
+        0,
+        CONFIG.guard.alarmThreshold,
+      );
+      this._setState(kind === 'shot' ? 'chase' : 'investigate');
+    }
   }
 
   noticeVisual(position, confidence = 0) {
@@ -121,6 +142,12 @@ export class Guard {
     this.investigationKind = 'sighting';
     this.visualContactTimer = VISUAL_GRACE;
     this.confidence = clamp(Math.max(this.confidence, confidence), 0, 1);
+    if (this.brain) {
+      this.brain.lastSeen = { ...toPlainVector(seen), t: 0 };
+      this._syncSuspicionFromBrain();
+      this._syncStateFromBrain();
+      return;
+    }
 
     if (this.suspicion >= CONFIG.guard.alarmThreshold) {
       this._setState('chase');
@@ -150,11 +177,15 @@ export class Guard {
     this.investigationPoint = this.searchAnchor.clone();
     this.investigationKind = 'lostVisual';
     this.searchLostTimer = this.state === 'chase' ? 3.2 : 1.8;
+    if (this.brain && this.brain.tier !== ALERT.COMBAT) {
+      this.brain.setTier(ALERT.SEARCHING, 'lost-visual');
+    }
     this._setState('searchLost');
   }
 
   enterCombat() {
     if (!this.alive || this.state === 'dead') return;
+    this.brain?.enterCombat('spotted');
     this.suspicion = CONFIG.guard.alarmThreshold;
     this.combatShotTimer = Math.min(this.combatShotTimer, 0.25);
     this._setState('combat');
@@ -186,6 +217,16 @@ export class Guard {
 
   investigate(position, kind = 'sighting') {
     this.hearNoise(position, kind);
+  }
+
+  findBody(position) {
+    if (!this.alive || this.state === 'dead') return;
+    const pos = toVector3(position).clone();
+    this.lastSeenPos = pos.clone();
+    this.investigationPoint = pos.clone();
+    this.investigationKind = 'body';
+    this.brain?.findBody(toPlainVector(pos));
+    this._syncStateFromBrain();
   }
 
   _updatePatrol(dt) {
@@ -222,6 +263,7 @@ export class Guard {
     const arrived = this._moveToward(this.investigationPoint, CONFIG.guard.patrolSpeed * 1.25, dt, 0.55);
     if (arrived) {
       this.investigateTimer -= dt;
+      this.brain?.callCheck();
       const scanYaw = Math.sin(performance.now() * 0.0025) * 0.75;
       _tmpA.subVectors(this.investigationPoint, this.position);
       _tmpA.y = 0;
@@ -236,6 +278,9 @@ export class Guard {
         } else {
           this.investigationPoint = null;
           this.investigationKind = null;
+          if (this.brain?.tier !== ALERT.CALM && this.brain?.tier !== ALERT.COMBAT) {
+            this.brain?.setTier(ALERT.COOLING, 'investigation-clear');
+          }
           this._setState('patrol');
         }
       }
@@ -255,7 +300,7 @@ export class Guard {
     const arrived = this._moveToward(target, CONFIG.guard.chaseSpeed, dt, 1.4);
     if (arrived) {
       if (hasLiveVisual) {
-        this._setState('combat');
+        this.enterCombat();
       } else {
         this.loseVisual();
       }
@@ -285,6 +330,9 @@ export class Guard {
       this.investigationPoint = null;
       this.investigationKind = null;
       this.lastSeenPos = null;
+      if (this.brain?.tier !== ALERT.CALM && this.brain?.tier !== ALERT.COMBAT) {
+        this.brain?.setTier(ALERT.COOLING, 'search-clear');
+      }
       this._setState('patrol');
     }
   }
@@ -362,6 +410,101 @@ export class Guard {
       this._turnImmediatelyToward(this.lastSeenPos);
     }
     this.bus?.emit('guard:state', { guard: this, state, previous });
+  }
+
+  _onBrainTier({ prev, tier, reason }) {
+    this._lastBrainTier = tier;
+    this.bus?.emit('guard:bark', {
+      guard: this,
+      id: this.id,
+      tier,
+      previous: prev,
+      reason,
+      position: this.position,
+      intensity: Math.max(0.45, this.suspicion),
+    });
+    this._syncStateFromBrain();
+  }
+
+  _syncStateFromBrain() {
+    if (!this.brain || !this.alive || this.state === 'dead') return;
+    this._syncSuspicionFromBrain();
+
+    const tier = this.brain.tier;
+    const point = this._brainFocusPoint();
+    if (point) {
+      if (this._brainFocusKind === 'sighting' || this._brainFocusKind === 'body') this.lastSeenPos = point.clone();
+      this.investigationPoint = point.clone();
+    }
+
+    switch (tier) {
+      case ALERT.CALM:
+        this.searchAnchor = null;
+        this.investigationPoint = null;
+        this.investigationKind = null;
+        this.lastSeenPos = null;
+        if (this.state !== 'patrol') this._setState('patrol');
+        break;
+      case ALERT.NOTICE:
+      case ALERT.SUSPICIOUS:
+        if (point) {
+          this.alertLookTimer = Math.max(this.alertLookTimer, tier === ALERT.NOTICE ? 0.55 : 0.9);
+          this.investigationKind = this._brainFocusKind ?? 'noise';
+          if (this.state !== 'alertLook' && this.state !== 'investigate') this._setState('alertLook');
+        }
+        break;
+      case ALERT.INVESTIGATING:
+        if (point) {
+          this.investigationKind = this._brainFocusKind ?? 'noise';
+          if (this.state !== 'investigate') {
+            this.investigateTimer = Math.max(this.investigateTimer, 1.35);
+            this._setState('investigate');
+          }
+        }
+        break;
+      case ALERT.ALERT:
+        if (point) {
+          this.searchAnchor = point.clone();
+          this.visualContactTimer = Math.max(this.visualContactTimer, VISUAL_GRACE);
+        }
+        if (this.state !== 'chase' && this.state !== 'combat') this._setState('chase');
+        break;
+      case ALERT.SEARCHING:
+        if (point) {
+          this.searchAnchor = point.clone();
+          this.investigationPoint = point.clone();
+        }
+        if (this.state !== 'searchLost') {
+          this.searchLostTimer = Math.max(this.searchLostTimer, 2.4);
+          this._setState('searchLost');
+        }
+        break;
+      case ALERT.COMBAT:
+        if (this.state !== 'combat') this._setState('combat');
+        break;
+      case ALERT.COOLING:
+        if (this.state !== 'patrol' && this.state !== 'searchLost') this._setState('patrol');
+        break;
+      default:
+        break;
+    }
+  }
+
+  _syncSuspicionFromBrain() {
+    if (!this.brain) return;
+    this.suspicion = clamp(this.brain.suspicion, 0, CONFIG.guard.alarmThreshold);
+  }
+
+  _brainFocusPoint() {
+    const seen = this.brain?.lastSeen ?? null;
+    const heard = this.brain?.lastHeard ?? null;
+    const source = seen && heard ? (seen.t <= heard.t ? seen : heard) : seen ?? heard;
+    if (!source) {
+      this._brainFocusKind = null;
+      return null;
+    }
+    this._brainFocusKind = source === seen ? 'sighting' : heard?.kind ?? 'noise';
+    return toVector3(source, _tmpC).clone();
   }
 
   _turnImmediatelyToward(target) {

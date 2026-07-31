@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
+import { scoreDetection } from '../core/alert/AlertBrain.js';
 import { clamp, smoothstep } from '../utils/math.js';
+import { BodySystem } from './BodySystem.js';
 
 const PLAYER_EYE_OFFSET = 1.1;
 const _eye = new THREE.Vector3();
@@ -11,7 +13,7 @@ const _lightDir = new THREE.Vector3();
 const _beamDir = new THREE.Vector3();
 
 export class PerceptionSystem {
-  constructor(scene, bus, lights, attention, modes) {
+  constructor(scene, bus, lights, attention, modes, options = {}) {
     this.scene = scene;
     this.bus = bus;
     this.lights = lights;
@@ -19,11 +21,12 @@ export class PerceptionSystem {
     this.modes = modes;
     this.raycaster = new THREE.Raycaster();
     this.noises = [];
-    this._spottedLatched = false;
-    this._hadVisualContact = false;
+    this._spottedLatchedByGuard = new Map();
+    this._hadVisualContactByGuard = new Map();
     this._occluderSource = null;
     this._occluderSourceLength = -1;
     this._cachedOccluders = null;
+    this.bodySystem = options.bodySystem ?? (options.enableBodies === false ? null : new BodySystem(scene, bus, options.bodyOptions));
 
     this.bus?.on('noise', (payload) => this.reportNoise(payload));
     this.bus?.on('player:noise', (payload) => this.reportNoise(payload));
@@ -31,45 +34,64 @@ export class PerceptionSystem {
     this.bus?.on('weapon:fired', (payload) => this.reportNoise({ ...payload, kind: 'shot' }));
   }
 
-  update(dt, player, partner, guard) {
-    if (!guard?.alive || guard.state === 'dead') return;
+  update(dt, player, partner, guardOrGuards, options = {}) {
+    const guards = Array.isArray(guardOrGuards) ? guardOrGuards : [guardOrGuards].filter(Boolean);
+    const activeGuards = [];
+    for (const noise of this.noises) noise.ttl -= dt;
 
-    const heard = this._applyHearing(dt, player, guard);
-    const best = this._scanTargets(player, partner, guard);
+    for (const guard of guards) {
+      if (!guard?.alive || guard.state === 'dead') continue;
+      activeGuards.push(guard);
 
-    if (best.score > 0.01) {
-      guard.suspicion += best.score * CONFIG.guard.suspicionRise * dt;
-      guard.noticeVisual?.(best.position, best.score);
-      this._hadVisualContact = true;
-    } else if (this._hadVisualContact) {
-      guard.loseVisual?.();
-      this._hadVisualContact = false;
+      const key = guardKey(guard);
+      const heard = this._applyHearing(dt, player, guard);
+      const best = this._scanTargets(player, partner, guard);
+
+      if (best.score > 0.01) {
+        guard.brain?.ingestPerception(best.score, dt, { seenPos: toPlainVector(best.position) });
+        if (guard.brain) guard.suspicion = guard.brain.suspicion;
+        else guard.suspicion += best.score * CONFIG.guard.suspicionRise * dt;
+        guard.noticeVisual?.(best.position, best.score);
+        this._hadVisualContactByGuard.set(key, true);
+      } else {
+        guard.brain?.ingestPerception(0, dt);
+        if (guard.brain) guard.suspicion = guard.brain.suspicion;
+        if (this._hadVisualContactByGuard.get(key)) {
+          guard.loseVisual?.();
+          this._hadVisualContactByGuard.set(key, false);
+        }
+      }
+
+      if (best.score <= 0.01 && !heard && guard.state !== 'combat' && !guard.brain) {
+        guard.suspicion -= CONFIG.guard.suspicionDecay * dt;
+      }
+
+      guard.suspicion = clamp(guard.suspicion, 0, CONFIG.guard.alarmThreshold);
+
+      const stealth = this.modes?.isStealth ?? this.modes?.mode === 'stealth';
+      if (stealth && guard.suspicion >= CONFIG.guard.alarmThreshold && !this._spottedLatchedByGuard.get(key)) {
+        this._spottedLatchedByGuard.set(key, true);
+        this.bus?.emit('guard:spotted', {
+          guard,
+          target: best.target?.entity ?? player,
+          targetType: best.target?.type ?? 'player',
+          suspicion: guard.suspicion,
+          score: best.score,
+          illumination: best.illumination,
+          visibility: best.visibility,
+          flashlight: best.flashlight,
+        });
+      }
+
+      if (!stealth || guard.suspicion < CONFIG.guard.alarmThreshold * 0.8) {
+        this._spottedLatchedByGuard.set(key, false);
+      }
     }
 
-    if (best.score <= 0.01 && !heard && guard.state !== 'combat') {
-      guard.suspicion -= CONFIG.guard.suspicionDecay * dt;
+    if (options.updateBodies !== false) {
+      this.bodySystem?.update(dt, { player, guards: activeGuards, seat: options.seat });
     }
-
-    guard.suspicion = clamp(guard.suspicion, 0, CONFIG.guard.alarmThreshold);
-
-    const stealth = this.modes?.isStealth ?? this.modes?.mode === 'stealth';
-    if (stealth && guard.suspicion >= CONFIG.guard.alarmThreshold && !this._spottedLatched) {
-      this._spottedLatched = true;
-      this.bus?.emit('guard:spotted', {
-        guard,
-        target: best.target?.entity ?? player,
-        targetType: best.target?.type ?? 'player',
-        suspicion: guard.suspicion,
-        score: best.score,
-        illumination: best.illumination,
-        visibility: best.visibility,
-        flashlight: best.flashlight,
-      });
-    }
-
-    if (!stealth || guard.suspicion < CONFIG.guard.alarmThreshold * 0.8) {
-      this._spottedLatched = false;
-    }
+    this.noises = this.noises.filter((noise) => noise.ttl > 0);
   }
 
   reportNoise(payload = {}) {
@@ -79,6 +101,7 @@ export class PerceptionSystem {
       kind: payload.kind ?? 'noise',
       ttl: payload.ttl ?? 2.5,
       applied: false,
+      appliedBy: new Set(),
     });
   }
 
@@ -153,17 +176,18 @@ export class PerceptionSystem {
       ? Math.max(attentionVis, 0.22)
       : attentionVis;
 
-    let roomScore = 0;
-    if (inViewCone) {
-      const lightTerm = smoothstep(CONFIG.guard.lightThreshold, 1, illumination);
-      const distanceFalloff = 1 - smoothstep(CONFIG.guard.viewDistance * 0.35, CONFIG.guard.viewDistance, distance);
-      const fovFalloff = smoothstep(fovDotThreshold, 1, dot);
-      roomScore = visibility * lightTerm * distanceFalloff * fovFalloff;
-    }
-
-    const flashlightScore = inFlashlightCone ? visibility * flashlight * 0.95 : 0;
+    const flashlightScore = inFlashlightCone ? flashlight * 0.95 : 0;
     const combinedIllumination = clamp(illumination + flashlight * 0.85, 0, 1);
-    let score = clamp(roomScore + flashlightScore, 0, 1);
+    let score = scoreDetection({
+      distance,
+      viewDistance: maxDistance,
+      fovDot: dot,
+      fovCos: fovDotThreshold,
+      illumination,
+      lightThreshold: CONFIG.guard.lightThreshold,
+      visibility,
+      flashlightScore,
+    });
 
     if (visibility < 0.2) {
       const veryCloseAndBright = distance < 2.25 && combinedIllumination > 0.86;
@@ -184,10 +208,10 @@ export class PerceptionSystem {
 
   _applyHearing(dt, player, guard) {
     let heard = false;
+    const key = guardKey(guard);
 
     for (const noise of this.noises) {
-      noise.ttl -= dt;
-      if (noise.applied || noise.ttl <= 0) continue;
+      if (noise.ttl <= 0 || noise.appliedBy?.has(key)) continue;
 
       const position = this._noisePosition(noise, player);
       if (!position) continue;
@@ -197,13 +221,13 @@ export class PerceptionSystem {
       if (distance > radius) continue;
 
       const strength = 1 - distance / Math.max(radius, 0.001);
-      guard.suspicion += strength * (noise.kind === 'shot' ? 0.9 : 0.35);
+      if (!guard.brain) guard.suspicion += strength * (noise.kind === 'shot' ? 0.9 : 0.35);
       guard.hearNoise?.(position, noise.kind);
+      noise.appliedBy?.add(key);
       noise.applied = true;
       heard = true;
     }
 
-    this.noises = this.noises.filter((noise) => noise.ttl > 0 && !noise.applied);
     return heard;
   }
 
@@ -422,4 +446,13 @@ function materialOpacity(material) {
   const uniformOpacity = material?.uniforms?.opacity?.value;
   if (Number.isFinite(uniformOpacity)) values.push(uniformOpacity);
   return values.length > 0 ? Math.min(...values) : 1;
+}
+
+function guardKey(guard) {
+  return guard?.brain?.id ?? guard?.id ?? guard?.mesh?.uuid ?? guard;
+}
+
+function toPlainVector(value) {
+  if (!value) return null;
+  return { x: value.x ?? 0, y: value.y ?? 0, z: value.z ?? 0 };
 }

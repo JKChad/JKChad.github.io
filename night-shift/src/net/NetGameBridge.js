@@ -20,20 +20,36 @@ function finite(value, fallback = 0) {
 }
 
 function stateWithSeq(state = {}, seq = 0) {
+  const source = state ?? {};
   return {
-    x: finite(state.x),
-    y: finite(state.y),
-    z: finite(state.z),
-    yaw: finite(state.yaw),
-    pitch: finite(state.pitch),
-    vx: finite(state.vx),
-    vz: finite(state.vz),
-    seq: state.seq ?? seq,
+    x: finite(source.x),
+    y: finite(source.y),
+    z: finite(source.z),
+    yaw: finite(source.yaw),
+    pitch: finite(source.pitch),
+    vx: finite(source.vx),
+    vz: finite(source.vz),
+    walk: Boolean(source.walk),
+    crouch: Boolean(source.crouch),
+    seq: source.seq ?? seq,
   };
 }
 
 function playerFromSnapshot(players, seat) {
   return players?.[seat] ?? players?.[String(seat)] ?? null;
+}
+
+function orderedNewInputs(payload = {}, lastAppliedSeq = 0, seat = 0) {
+  const batch = Array.isArray(payload.inputs) ? payload.inputs : [payload.input];
+  const bySeq = new Map();
+  for (const raw of batch) {
+    const seq = raw?.seq;
+    if (!Number.isFinite(seq) || seq <= lastAppliedSeq) continue;
+    bySeq.set(seq, { ...raw, s: seat });
+  }
+  return [...bySeq.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([, input]) => input);
 }
 
 export class NetGameBridge {
@@ -71,6 +87,7 @@ export class NetGameBridge {
     this._transportUnsubs = [];
     this._busUnsubs = [
       this.bus?.on?.('attention:transfer', (payload) => this._handleAttentionTransfer(payload)),
+      this.bus?.on?.('net:remote-hello', (payload) => this._handleRemoteHello(payload)),
       this.bus?.on?.('net:remote-input', (payload) => this._handleRemoteInput(payload)),
       this.bus?.on?.('net:snapshot', (snap) => this._handleSnapshot(snap)),
       this.bus?.on?.('net:event', (event) => this._handleNetEvent(event)),
@@ -105,7 +122,7 @@ export class NetGameBridge {
 
     this.session.update(dt);
     if (this.isHost) {
-      this.attention?.update?.(dt);
+      this.attention?.update?.(dt, { authority: true });
       this._applyAttention(this.attention?.snapshot?.());
       this.session.maybeBroadcast(dt, () => this._buildSnapshot());
       return;
@@ -122,7 +139,7 @@ export class NetGameBridge {
     const value = Math.max(0, Number(amount) || 0);
     if (!this.active || value <= 0) return;
     if (this.isHost) {
-      this.attention?.spikeToward?.(seat, value);
+      this.attention?.spikeToward?.(seat, value, { authority: true });
       this._applyAttention(this.attention?.snapshot?.());
       return;
     }
@@ -158,6 +175,7 @@ export class NetGameBridge {
     this.isHost = isHost;
     this.localSeat = localSeat;
     this.remoteSeat = localSeat === 0 ? 1 : 0;
+    this.attention?.setLocked?.(!isHost);
     this._localInputSeq = 0;
     this._snapshotId = 0;
     this._remoteStates.clear();
@@ -166,6 +184,7 @@ export class NetGameBridge {
       attention: this.attention,
       isHost,
       localSeat,
+      getLocalState: (seat) => stateWithSeq(this.getLocalState?.(seat), this._localInputSeq),
     });
     this.bus?.emit?.('net:status', {
       state: isHost ? 'hosting' : 'joining',
@@ -229,7 +248,7 @@ export class NetGameBridge {
     const dir = normalizeDir(payload.dir);
     const seat = payload.seat ?? this.localSeat;
     if (this.isHost) {
-      this.attention?.setTransferIntent?.(seat, dir);
+      this.attention?.setTransferIntent?.(seat, dir, { authority: true });
       return;
     }
     if (!this.session.connected) return;
@@ -241,26 +260,51 @@ export class NetGameBridge {
   _handleNetEvent(event = {}) {
     if (!this.isHost || !this.active) return;
     if (event.type === 'attention:intent') {
-      this.attention?.setTransferIntent?.(event.seat ?? this.remoteSeat, normalizeDir(event.dir));
+      this.attention?.setTransferIntent?.(event.seat ?? this.remoteSeat, normalizeDir(event.dir), {
+        authority: true,
+      });
     } else if (event.type === 'attention:spike') {
-      this.attention?.spikeToward?.(event.seat ?? this.remoteSeat, Math.max(0, Number(event.amount) || 0));
+      this.attention?.spikeToward?.(
+        event.seat ?? this.remoteSeat,
+        Math.max(0, Number(event.amount) || 0),
+        { authority: true },
+      );
       this._applyAttention(this.attention?.snapshot?.());
     }
   }
 
+  _handleRemoteHello(payload = {}) {
+    if (!this.isHost || !this.active || !payload.spawn) return;
+    const seat = payload.seat ?? this.remoteSeat;
+    if (this._remoteStates.has(seat)) return;
+    const spawn = stateWithSeq(payload.spawn, payload.spawn.seq ?? 0);
+    this._remoteStates.set(seat, spawn);
+    this.applyRemoteState?.(seat, spawn, {
+      authoritative: true,
+      spawn: true,
+      local: seat === this.localSeat,
+    });
+  }
+
   _handleRemoteInput(payload = {}) {
     if (!this.isHost || !this.active) return;
-    const seat = payload.seat ?? this.remoteSeat;
-    const input = { ...payload.input, s: seat };
+    const seat = this.remoteSeat;
     const previous = this._remoteStates.get(seat);
-    if (previous && input.seq != null && input.seq <= previous.seq) return;
+    const lastAppliedSeq = previous?.seq ?? 0;
+    const inputs = orderedNewInputs(payload, lastAppliedSeq, seat);
+    if (inputs.length === 0) return;
 
-    const next = previous
-      ? simulateMovement(previous, input)
-      : stateWithSeq(payload.state, input.seq ?? 0);
-    next.seq = input.seq ?? next.seq;
+    let next = previous ? stateWithSeq(previous, lastAppliedSeq) : stateWithSeq(null, lastAppliedSeq);
+    for (const input of inputs) {
+      next = simulateMovement(next, input);
+    }
     this._remoteStates.set(seat, next);
-    this.applyRemoteState?.(seat, next, { authoritative: true, input, local: seat === this.localSeat });
+    this.applyRemoteState?.(seat, next, {
+      authoritative: true,
+      input: inputs[inputs.length - 1],
+      inputs,
+      local: seat === this.localSeat,
+    });
   }
 
   _handleSnapshot(snap = {}) {
@@ -308,6 +352,10 @@ export class NetGameBridge {
       input.seq = ++this._localInputSeq;
     } else {
       this._localInputSeq = input.seq;
+    }
+    if (Number.isFinite(input.b)) {
+      input.walk = Boolean(input.b & 1);
+      input.crouch = Boolean(input.b & 2);
     }
 
     const state = this.getLocalState?.(this.localSeat);

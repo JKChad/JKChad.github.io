@@ -6,13 +6,18 @@ import { clamp } from '../math/index.js';
  * Visibility state is reconciled from host snapshots — never predicted.
  */
 export class AttentionModel {
-  constructor({ total = 100, transferRate = 55, bus = null } = {}) {
+  constructor({ total = 100, transferRate = 55, bus = null, locked = false } = {}) {
     this.total = total;
     this.transferRate = transferRate;
     this.bus = bus;
+    this.locked = locked;
     this.shares = { p0: total * 0.5, p1: total * 0.5 };
     this._transferDir = { p0: 0, p1: 0 };
     this.revision = 0;
+  }
+
+  setLocked(locked = true) {
+    this.locked = Boolean(locked);
   }
 
   visibility(seat) {
@@ -21,24 +26,27 @@ export class AttentionModel {
   }
 
   /** Host only: set continuous transfer intent for a seat. dir in {-1,0,1} */
-  setTransferIntent(seat, dir) {
+  setTransferIntent(seat, dir, { authority = false } = {}) {
+    if (!this._canMutate(authority)) return;
     const key = seat === 0 ? 'p0' : 'p1';
     this._transferDir[key] = dir < 0 ? -1 : dir > 0 ? 1 : 0;
   }
 
   /** Host only: spike attention toward a seat (noise / shot). */
-  spikeToward(seat, amount) {
+  spikeToward(seat, amount, { authority = false } = {}) {
+    if (!this._canMutate(authority)) return;
     const delta = seat === 0 ? amount : -amount;
-    this._applyDelta(delta);
+    this._applyDelta(delta, { authority });
   }
 
   /** Host only. */
-  update(dt) {
+  update(dt, { authority = false } = {}) {
+    if (!this._canMutate(authority)) return;
     // p0 pulling (+1) increases p0 share; p1 pulling (+1) decreases p0 share.
     const net =
       this._transferDir.p0 * this.transferRate * dt -
       this._transferDir.p1 * this.transferRate * dt;
-    if (net !== 0) this._applyDelta(net);
+    if (net !== 0) this._applyDelta(net, { authority });
   }
 
   /** Apply authoritative snapshot from host (clients). Never invent visibility. */
@@ -61,7 +69,12 @@ export class AttentionModel {
     };
   }
 
-  _applyDelta(deltaTowardP0) {
+  _canMutate(authority = false) {
+    return !this.locked || authority === true;
+  }
+
+  _applyDelta(deltaTowardP0, { authority = false } = {}) {
+    if (!this._canMutate(authority)) return;
     this.shares.p0 = clamp(this.shares.p0 + deltaTowardP0, 0, this.total);
     this.shares.p1 = this.total - this.shares.p0;
     this.revision++;

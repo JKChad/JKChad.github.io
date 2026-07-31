@@ -49,6 +49,11 @@ export class MovementPredictor {
     if (this.pending.length > this.maxBuffered) this.pending.shift();
   }
 
+  recentInputs(limit = 8) {
+    const count = Math.max(0, Math.min(limit, this.pending.length));
+    return this.pending.slice(this.pending.length - count).map((p) => ({ ...p.input }));
+  }
+
   /**
    * Apply host snapshot. Returns corrected predicted state.
    * Visibility is NOT predicted — callers must apply attention from snap separately.
@@ -77,11 +82,12 @@ export class MovementPredictor {
  * Session logic without transport. Wire to WebRTC / local loopback adapters.
  */
 export class NetSession {
-  constructor({ bus, attention, isHost = true, localSeat = 0 } = {}) {
+  constructor({ bus, attention, isHost = true, localSeat = 0, getLocalState = null } = {}) {
     this.bus = bus;
     this.attention = attention;
     this.isHost = isHost;
     this.localSeat = localSeat;
+    this.getLocalState = getLocalState;
     this.remoteSeat = localSeat === 0 ? 1 : 0;
     this.connected = false;
     this.peerId = null;
@@ -95,6 +101,8 @@ export class NetSession {
     };
     this._players[localSeat].present = true;
     this.predictor = new MovementPredictor();
+    this._inputReplayLimit = 8;
+    this._acceptedRemoteSpawn = false;
     this._snapshotHz = 20;
     this._snapshotAccum = 0;
     this._lastPing = 0;
@@ -122,7 +130,10 @@ export class NetSession {
         attention: this.attention.snapshot(),
       });
     } else {
-      this.send(MSG.HELLO, { seat: this.localSeat });
+      this.send(MSG.HELLO, {
+        seat: this.localSeat,
+        spawn: this.getLocalState?.(this.localSeat) ?? null,
+      });
     }
   }
 
@@ -132,11 +143,11 @@ export class NetSession {
     this.bus?.emit('net:disconnected', { reason, seat: this.remoteSeat });
     // Graceful solo continue — attention rebalances toward remaining player.
     if (this.isHost && this.attention) {
-      this.attention.setTransferIntent(this.remoteSeat, 0);
+      this.attention.setTransferIntent(this.remoteSeat, 0, { authority: true });
       // Pull remaining heat to local so solo isn't permanently ghosted/hot wrongly.
       const snap = this.attention.snapshot();
-      if (this.localSeat === 0) this.attention.spikeToward(0, 50 - snap.p0);
-      else this.attention.spikeToward(1, 50 - snap.p1);
+      if (this.localSeat === 0) this.attention.spikeToward(0, 50 - snap.p0, { authority: true });
+      else this.attention.spikeToward(1, 50 - snap.p1, { authority: true });
     }
   }
 
@@ -144,7 +155,10 @@ export class NetSession {
   sendLocalInput(inputPacket, predictedState) {
     this.predictor.pushInput(inputPacket.seq, inputPacket, predictedState);
     if (!this.connected || this.isHost) return;
-    this.send(MSG.INPUT, { input: inputPacket, state: predictedState });
+    this.send(MSG.INPUT, {
+      input: inputPacket,
+      inputs: this.predictor.recentInputs(this._inputReplayLimit),
+    });
   }
 
   /** Host broadcasts world snapshot */
@@ -166,6 +180,14 @@ export class NetSession {
       case MSG.HELLO:
         if (this.isHost) {
           this._players[this.remoteSeat].present = true;
+          if (!this._acceptedRemoteSpawn && msg.spawn) {
+            this._acceptedRemoteSpawn = true;
+            this._players[this.remoteSeat].state = msg.spawn;
+            this.bus?.emit('net:remote-hello', {
+              seat: this.remoteSeat,
+              spawn: msg.spawn,
+            });
+          }
           this.send(MSG.WELCOME, {
             you: this.remoteSeat,
             host: this.localSeat,
@@ -183,12 +205,16 @@ export class NetSession {
         break;
       case MSG.INPUT:
         if (this.isHost) {
+          const inputs = Array.isArray(msg.inputs) ? msg.inputs : [msg.input].filter(Boolean);
           this.bus?.emit('net:remote-input', {
             seat: this.remoteSeat,
             input: msg.input,
-            state: msg.state,
+            inputs,
           });
-          this._players[this.remoteSeat].lastInputSeq = msg.input?.seq ?? 0;
+          this._players[this.remoteSeat].lastInputSeq = Math.max(
+            this._players[this.remoteSeat].lastInputSeq ?? 0,
+            ...inputs.map((input) => input?.seq ?? 0),
+          );
         }
         break;
       case MSG.SNAPSHOT:

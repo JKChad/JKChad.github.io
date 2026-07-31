@@ -25,6 +25,15 @@ function createInputRouter(game, bridge) {
     seat() {
       return {
         toNet() {
+          const inputSeat = game.input?.getSeat?.(0);
+          const netFrame = inputSeat?.toNet?.();
+          if (netFrame) {
+            return {
+              ...netFrame,
+              s: bridge.localSeat,
+            };
+          }
+
           const keys = game.player?._keys;
           const weapon = game.weapon;
           const holdAttention = keys?.has?.(KEYS.holdAttention);
@@ -49,6 +58,8 @@ function createInputRouter(game, bridge) {
             lx: 0,
             ly: 0,
             b,
+            walk,
+            crouch,
           };
         },
       };
@@ -102,8 +113,8 @@ function seedAttentionModel(model, game, localSeat) {
   model.shares.p0 = localSeat === 0 ? local : partner;
   model.shares.p1 = CONFIG.attention.total - model.shares.p0;
   model.revision = 0;
-  model.setTransferIntent(0, 0);
-  model.setTransferIntent(1, 0);
+  model.setTransferIntent(0, 0, { authority: true });
+  model.setTransferIntent(1, 0, { authority: true });
 }
 
 export function installNet(game, uiRoot = document.getElementById('ui')) {

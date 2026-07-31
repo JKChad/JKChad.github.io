@@ -1,5 +1,7 @@
-import { Peer } from 'peerjs';
+import PeerJSImport from 'peerjs';
 import { LatencySimulator } from './LatencySimulator.js';
+
+const Peer = PeerJSImport.Peer ?? PeerJSImport.default ?? PeerJSImport;
 
 const ROOM_PREFIX = 'night-shift';
 const DEFAULT_HOST = undefined;

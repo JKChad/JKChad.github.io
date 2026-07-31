@@ -1,17 +1,15 @@
 import { clamp, damp } from '../math/index.js';
+import { CONFIG } from '../../config.js';
 
-const ROOM_WIDTH = 28;
-const ROOM_DEPTH = 22;
+const ROOM_WIDTH = CONFIG.room.width;
+const ROOM_DEPTH = CONFIG.room.depth;
 const ROOM_X_MIN = -ROOM_WIDTH * 0.5 + 0.5;
 const ROOM_X_MAX = ROOM_WIDTH * 0.5 - 0.5;
 const ROOM_Z_MIN = -ROOM_DEPTH * 0.5 + 0.5;
 const ROOM_Z_MAX = ROOM_DEPTH * 0.5 - 0.5;
 const HALF_PI = Math.PI * 0.5;
 
-const WALK_SPEED = 2.4;
-const RUN_SPEED = 4.6;
-const CROUCH_SPEED = 1.35;
-const DEFAULT_DT = 1 / 60;
+const DEFAULT_DT = CONFIG.fixedDt;
 
 function numberOr(value, fallback = 0) {
   return Number.isFinite(value) ? value : fallback;
@@ -39,7 +37,7 @@ function buttonMask(input = {}) {
  * Accepts compact InputSeat.toNet packets (mx/my/lx/ly/b) plus optional yaw/pitch.
  */
 export function simulateMovement(state = {}, input = {}) {
-  const dt = Math.min(Math.max(numberOr(input.dt, DEFAULT_DT), 0), 0.05);
+  const dt = Math.min(Math.max(numberOr(input.dt, DEFAULT_DT), 0), CONFIG.maxFrameDt);
   const buttons = buttonMask(input);
   const walk = Boolean(buttons & 1);
   const crouch = Boolean(buttons & 2);
@@ -68,7 +66,11 @@ export function simulateMovement(state = {}, input = {}) {
   const wishX = rightX * nx + forwardX * ny;
   const wishZ = rightZ * nx + forwardZ * ny;
   const hasInput = Math.hypot(wishX, wishZ) > 0.0001;
-  const speed = crouch ? CROUCH_SPEED : walk ? WALK_SPEED : RUN_SPEED;
+  const speed = crouch
+    ? CONFIG.player.crouchSpeed
+    : walk
+      ? CONFIG.player.walkSpeed
+      : CONFIG.player.runSpeed;
   const accel = hasInput ? (crouch ? 18 : 24) : 20;
   const targetVx = hasInput ? wishX * speed : 0;
   const targetVz = hasInput ? wishZ * speed : 0;
@@ -84,6 +86,8 @@ export function simulateMovement(state = {}, input = {}) {
     pitch,
     vx,
     vz,
+    walk,
+    crouch,
     seq: input.seq ?? state.seq ?? 0,
   };
 }

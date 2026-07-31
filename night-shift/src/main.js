@@ -1,5 +1,6 @@
 import './style.css';
 import { Game } from './game/Game.js';
+import { installNet } from './net/installNet.js';
 
 const app = document.getElementById('app');
 const ui = document.getElementById('ui');
@@ -79,6 +80,7 @@ function bootGame() {
 
   try {
     game = new Game(app, ui);
+    installNet(game, ui);
     wireAttentionTransfer(game);
   } catch (error) {
     console.error('Failed to initialize NIGHT SHIFT', error);

@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "cannon-es": "^0.20.0",
+    "peerjs": "^1.5.5",
     "postprocessing": "^6.36.0",
     "three": "^0.172.0"
   },

@@ -28,7 +28,8 @@ export class PostFx {
 
     this.composer = new EffectComposer(renderer, {
       frameBufferType: THREE.HalfFloatType,
-      multisampling: renderer.capabilities?.isWebGL2 ? 2 : 0,
+      // SMAA handles AA — avoid MSAA+SMAA stacking cost on iGPUs.
+      multisampling: 0,
       stencilBuffer: false,
     });
 

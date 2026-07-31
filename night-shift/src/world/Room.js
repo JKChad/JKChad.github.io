@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
-import { concrete, emissiveTrim, glass, metal, paintedMetal } from '../rendering/Materials.js';
+import { concrete, emissiveTrim, fabric, glass, metal, paintedMetal } from '../rendering/Materials.js';
 
 const FLOOR_Y = 0;
 
@@ -22,67 +22,117 @@ export class Room {
     this.materials = {
       floor: concrete({
         name: 'oil-dark concrete floor',
-        color: 0x1c2426,
+        color: 0x182124,
         roughness: 0.72,
         envMapIntensity: 0.35,
         repeat: [9, 7],
+        panel: [7, 5],
+        seamWidth: 0.009,
+        edgeWearStrength: 1.25,
         seed: 4,
       }),
       ceiling: paintedMetal({
         name: 'smoke stained ceiling paint',
-        color: 0x1d2528,
+        color: 0x1a2225,
         roughness: 0.78,
         metalness: 0.16,
         repeat: [7, 5],
+        panel: [7, 4],
+        edgeWearStrength: 0.8,
         seed: 5,
       }),
       wall: paintedMetal({
-        name: 'worn charcoal wall panels',
-        color: 0x253137,
+        name: 'stenciled cold blue-gray wall panels',
+        color: 0x202c32,
         roughness: 0.74,
         metalness: 0.22,
-        repeat: [5, 3],
+        repeat: [5, 3.2],
+        panel: [5, 3],
+        seamWidth: 0.014,
+        stencils: true,
+        labelColor: 0xcf8028,
+        edgeWearStrength: 1.32,
         seed: 6,
       }),
       darkWall: concrete({
-        name: 'cold poured concrete wall',
-        color: 0x182123,
+        name: 'stenciled dirty concrete wall',
+        color: 0x151d1f,
         roughness: 0.9,
-        repeat: [5, 3],
+        repeat: [5.5, 3.1],
+        panel: [4, 3],
+        seamWidth: 0.012,
+        stencils: true,
+        labelColor: 0xb56f24,
+        edgeWearStrength: 1.18,
         seed: 7,
       }),
       steel: metal({
         name: 'oxidized blue steel',
-        color: 0x3f5055,
+        color: 0x364a51,
         roughness: 0.58,
+        panel: [3, 3],
+        edgeWearStrength: 1.35,
         seed: 8,
       }),
       blackSteel: metal({
-        name: 'blackened structural steel',
-        color: 0x111a1b,
+        name: 'dirty green-black structural steel',
+        color: 0x0f1918,
         roughness: 0.62,
         metalness: 0.7,
+        panel: [2, 4],
+        edgeWearStrength: 1.18,
         seed: 10,
       }),
+      cable: metal({
+        name: 'cable tar grime over black metal',
+        color: 0x0b1211,
+        roughness: 0.86,
+        metalness: 0.22,
+        repeat: [8, 1],
+        seams: false,
+        cableGrime: true,
+        normalScaleDefault: 0.5,
+        envMapIntensity: 0.12,
+        seed: 11,
+      }),
       desk: paintedMetal({
-        name: 'scuffed desk enamel',
-        color: 0x303a37,
+        name: 'dirty green-black scuffed desk enamel',
+        color: 0x293631,
         roughness: 0.66,
         metalness: 0.42,
         repeat: [3, 2],
+        panel: [3, 2],
+        seamWidth: 0.013,
+        edgeWearStrength: 1.45,
         seed: 12,
       }),
       crate: paintedMetal({
         name: 'worn olive storage crate',
-        color: 0x333d2f,
+        color: 0x2a3528,
         roughness: 0.76,
         metalness: 0.28,
         repeat: [2, 2],
+        panel: [2, 2],
+        edgeWearStrength: 1.4,
         seed: 16,
       }),
-      amber: emissiveTrim({ name: 'sodium amber emergency paint', color: 0xff9b35, intensity: 0.42 }),
-      teal: emissiveTrim({ name: 'dirty green status glass', color: 0x6bb6a2, intensity: 0.24 }),
-      glass: glass({ opacity: 0.28, roughness: 0.28 }),
+      paper: fabric({
+        name: 'stained grey-green work order paper',
+        color: 0x5d665d,
+        roughness: 0.96,
+        repeat: [1.4, 1],
+        seed: 18,
+      }),
+      chairFabric: fabric({
+        name: 'cold black torn chair vinyl',
+        color: 0x18201e,
+        roughness: 0.88,
+        repeat: [2, 2],
+        seed: 19,
+      }),
+      amber: emissiveTrim({ name: 'sickly sodium amber emergency paint', color: 0xff982b, intensity: 0.42 }),
+      teal: emissiveTrim({ name: 'dirty green-black status glass', color: 0x4f7f65, intensity: 0.24 }),
+      glass: glass({ color: 0x68848a, opacity: 0.28, roughness: 0.28 }),
     };
 
     scene.add(this.group);
@@ -107,6 +157,13 @@ export class Room {
     ];
   }
 
+  _surfaceFromMaterial(material) {
+    if (Array.isArray(material)) {
+      return material.find((mat) => mat?.userData?.surface)?.userData.surface;
+    }
+    return material?.userData?.surface;
+  }
+
   _box(name, size, position, material, options = {}) {
     const geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
     if (geometry.attributes.uv && !geometry.attributes.uv2) {
@@ -118,6 +175,8 @@ export class Room {
     if (options.rotation) mesh.rotation.set(options.rotation.x ?? 0, options.rotation.y ?? 0, options.rotation.z ?? 0);
     mesh.castShadow = options.castShadow ?? true;
     mesh.receiveShadow = options.receiveShadow ?? true;
+    const surface = options.surface ?? this._surfaceFromMaterial(material);
+    if (surface) mesh.userData.surface = surface;
 
     if (options.receiveDecals) {
       mesh.userData.receiveDecals = true;
@@ -161,6 +220,8 @@ export class Room {
       strip.position.copy(offset);
       strip.castShadow = options.castShadow ?? false;
       strip.receiveShadow = options.receiveShadow ?? true;
+      const surface = this._surfaceFromMaterial(material);
+      if (surface) strip.userData.surface = surface;
       mesh.add(strip);
     }
   }
@@ -180,6 +241,8 @@ export class Room {
     mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
     mesh.castShadow = options.castShadow ?? true;
     mesh.receiveShadow = options.receiveShadow ?? true;
+    const surface = options.surface ?? this._surfaceFromMaterial(material);
+    if (surface) mesh.userData.surface = surface;
     this.group.add(mesh);
     return mesh;
   }
@@ -347,10 +410,13 @@ export class Room {
     const ventMat = this.materials.steel;
     const panelMat = paintedMetal({
       name: 'server rack charcoal panels',
-      color: 0x222b31,
+      color: 0x1d272b,
       roughness: 0.64,
       metalness: 0.48,
       repeat: [2, 4],
+      panel: [2, 6],
+      seamWidth: 0.012,
+      edgeWearStrength: 1.28,
       seed: 31,
     });
 
@@ -496,7 +562,7 @@ export class Room {
   }
 
   _buildDetailTrim(width, depth) {
-    const cableMat = this.materials.blackSteel;
+    const cableMat = this.materials.cable;
     const z = -depth / 2 + 0.22;
     for (let i = 0; i < 5; i++) {
       this._box(
@@ -527,7 +593,7 @@ export class Room {
   }
 
   _buildCableRuns(width, depth, height) {
-    const cableMat = this.materials.blackSteel;
+    const cableMat = this.materials.cable;
     const conduitMat = this.materials.steel;
     const rearZ = -depth / 2 + 0.18;
     const rightX = width / 2 - 0.2;
@@ -599,7 +665,7 @@ export class Room {
       'skewed rolling chair seat',
       new THREE.Vector3(0.68, 0.12, 0.62),
       new THREE.Vector3(-0.75, 0.48, 2.15),
-      this.materials.desk,
+      this.materials.chairFabric,
       { rotation: new THREE.Vector3(0.2, 0.75, -0.1), receiveDecals: true }
     );
     this._cylinderBetween(
@@ -619,7 +685,7 @@ export class Room {
         'scattered paper work order',
         new THREE.Vector3(0.42, 0.012, 0.3),
         new THREE.Vector3(x, 0.035, z),
-        this.materials.ceiling,
+        this.materials.paper,
         { rotation: new THREE.Vector3(0, yaw, 0), castShadow: false }
       );
     }
@@ -633,13 +699,14 @@ export class Room {
     bucket.rotation.set(0.24, 0, -0.38);
     bucket.castShadow = true;
     bucket.receiveShadow = true;
+    bucket.userData.surface = this._surfaceFromMaterial(this.materials.blackSteel);
     this.group.add(bucket);
   }
 
   _buildExtractMarker() {
     const extractGlow = emissiveTrim({
       name: 'dirty green extract objective glow',
-      color: 0x8fcf9a,
+      color: 0x7ea06b,
       intensity: 0.78,
       roughness: 0.44,
       metalness: 0.18,

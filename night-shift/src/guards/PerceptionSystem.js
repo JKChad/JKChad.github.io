@@ -11,6 +11,7 @@ const _dir = new THREE.Vector3();
 const _flatDir = new THREE.Vector3();
 const _lightDir = new THREE.Vector3();
 const _beamDir = new THREE.Vector3();
+const VISUAL_LOST_GRACE = 0.35;
 
 export class PerceptionSystem {
   constructor(scene, bus, lights, attention, modes, options = {}) {
@@ -23,6 +24,7 @@ export class PerceptionSystem {
     this.noises = [];
     this._spottedLatchedByGuard = new Map();
     this._hadVisualContactByGuard = new Map();
+    this._zeroVisualTimeByGuard = new Map();
     this._occluderSource = null;
     this._occluderSourceLength = -1;
     this._cachedOccluders = null;
@@ -48,15 +50,22 @@ export class PerceptionSystem {
       const best = this._scanTargets(player, partner, guard);
 
       if (best.score > 0.01) {
-        guard.brain?.ingestPerception(best.score, dt, { seenPos: toPlainVector(best.position) });
-        if (guard.brain) guard.suspicion = guard.brain.suspicion;
-        else guard.suspicion += best.score * CONFIG.guard.suspicionRise * dt;
-        guard.noticeVisual?.(best.position, best.score);
+        if (guard.brain) {
+          guard.brain.ingestPerception(best.score, dt, { seenPos: toPlainVector(best.position) });
+          guard.suspicion = guard.brain.suspicion;
+        } else {
+          guard.suspicion += best.score * CONFIG.guard.suspicionRise * dt;
+          guard.noticeVisual?.(best.position, best.score);
+        }
         this._hadVisualContactByGuard.set(key, true);
+        this._zeroVisualTimeByGuard.set(key, 0);
       } else {
         guard.brain?.ingestPerception(0, dt);
         if (guard.brain) guard.suspicion = guard.brain.suspicion;
-        if (this._hadVisualContactByGuard.get(key)) {
+
+        const zeroVisualTime = (this._zeroVisualTimeByGuard.get(key) ?? 0) + dt;
+        this._zeroVisualTimeByGuard.set(key, zeroVisualTime);
+        if (!guard.brain && this._hadVisualContactByGuard.get(key) && zeroVisualTime > VISUAL_LOST_GRACE) {
           guard.loseVisual?.();
           this._hadVisualContactByGuard.set(key, false);
         }
@@ -69,7 +78,7 @@ export class PerceptionSystem {
       guard.suspicion = clamp(guard.suspicion, 0, CONFIG.guard.alarmThreshold);
 
       const stealth = this.modes?.isStealth ?? this.modes?.mode === 'stealth';
-      if (stealth && guard.suspicion >= CONFIG.guard.alarmThreshold && !this._spottedLatchedByGuard.get(key)) {
+      if (stealth && best.score > 0.01 && guard.suspicion >= CONFIG.guard.alarmThreshold && !this._spottedLatchedByGuard.get(key)) {
         this._spottedLatchedByGuard.set(key, true);
         this.bus?.emit('guard:spotted', {
           guard,
@@ -221,8 +230,14 @@ export class PerceptionSystem {
       if (distance > radius) continue;
 
       const strength = 1 - distance / Math.max(radius, 0.001);
-      if (!guard.brain) guard.suspicion += strength * (noise.kind === 'shot' ? 0.9 : 0.35);
-      guard.hearNoise?.(position, noise.kind);
+      const intensity = this._hearingIntensity(noise.kind, strength);
+      if (guard.brain) {
+        guard.brain.hear(toPlainVector(position), noise.kind, intensity);
+        guard.suspicion = guard.brain.suspicion;
+      } else {
+        guard.suspicion += strength * (noise.kind === 'shot' ? 0.9 : 0.35);
+        guard.hearNoise?.(position, noise.kind, intensity);
+      }
       noise.appliedBy?.add(key);
       noise.applied = true;
       heard = true;
@@ -247,6 +262,17 @@ export class PerceptionSystem {
     return kind === 'shot' || kind === 'explosion' || kind === 'alarm'
       ? CONFIG.guard.hearingRadiusLoud
       : CONFIG.guard.hearingRadiusQuiet;
+  }
+
+  _hearingIntensity(kind, strength) {
+    const base = kind === 'shot' || kind === 'explosion' || kind === 'alarm'
+      ? 1
+      : kind === 'body-radio'
+        ? 0.85
+        : kind === 'cough'
+          ? 0.55
+          : 0.4;
+    return clamp(base * clamp(strength, 0, 1), 0, 1);
   }
 
   _makeTarget(type, entity, visibility) {

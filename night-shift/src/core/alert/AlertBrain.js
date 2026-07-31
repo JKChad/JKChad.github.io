@@ -54,7 +54,7 @@ export class AlertBrain {
       this.quietTime = 0;
       this.suspicion = clamp(this.suspicion + score * dt * 1.1, 0, 1);
       this.confidence = clamp(this.confidence + score * dt * 0.9, 0, 1);
-      if (seenPos) this.lastSeen = { ...seenPos, t: 0 };
+      if (seenPos) this.lastSeen = { ...seenPos, kind: 'sighting', t: 0 };
     } else {
       this.quietTime += dt;
       this.suspicion = clamp(this.suspicion - dt * 0.12, 0, 1);
@@ -65,13 +65,19 @@ export class AlertBrain {
   }
 
   hear(pos, kind = 'noise', intensity = 0.5) {
-    this.lastHeard = { ...pos, kind, intensity, t: 0 };
+    const heardIntensity = clamp(intensity, 0, 1);
+    this.lastHeard = { ...pos, kind, intensity: heardIntensity, t: 0 };
     this.quietTime = 0;
-    this.suspicion = clamp(this.suspicion + intensity * 0.35, 0, 1);
-    if (this.tier === ALERT.CALM || this.tier === ALERT.NOTICE) {
+    this.suspicion = clamp(this.suspicion + heardIntensity * 0.35, 0, 1);
+
+    if (isLoudSound(kind) && heardIntensity >= 0.15) {
+      this.setTier(ALERT.ALERT, kind);
+    } else if (heardIntensity >= 0.18 && (this.tier === ALERT.CALM || this.tier === ALERT.NOTICE)) {
       this.setTier(ALERT.SUSPICIOUS, kind);
     } else if (this.tier === ALERT.COOLING) {
       this.setTier(ALERT.INVESTIGATING, kind);
+    } else {
+      this._reevaluate(kind);
     }
   }
 
@@ -80,7 +86,7 @@ export class AlertBrain {
     this.bodyKnown = true;
     this.suspicion = 1;
     this.setTier(ALERT.ALERT, 'body');
-    this.lastSeen = { ...pos, t: 0 };
+    this.lastSeen = { ...pos, kind: 'body', t: 0 };
     this.bus?.emit('alert:body-found', { id: this.id, pos });
   }
 
@@ -117,6 +123,7 @@ export class AlertBrain {
 
   _reevaluate(reason) {
     if (this.tier === ALERT.COMBAT) return;
+    if ((this.tier === ALERT.ALERT || this.tier === ALERT.SEARCHING) && this.quietTime <= 8) return;
     if (this.suspicion >= 0.95 && this.confidence >= 0.7) {
       this.setTier(ALERT.ALERT, reason);
       return;
@@ -133,6 +140,10 @@ export class AlertBrain {
       this.setTier(ALERT.NOTICE, reason);
     }
   }
+}
+
+function isLoudSound(kind) {
+  return kind === 'shot' || kind === 'explosion' || kind === 'alarm';
 }
 
 /**

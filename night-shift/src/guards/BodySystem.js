@@ -201,7 +201,7 @@ export class BodySystem {
     const group = new THREE.Group();
     group.name = 'unhidden guard body';
     group.position.copy(toVector3(body.pos, _tmpA));
-    group.rotation.y = Math.random() * Math.PI * 2;
+    group.rotation.y = seededUnit(body.id ?? body.sourceId ?? 'body') * Math.PI * 2;
     group.userData.bodyId = body.id;
     group.userData.perceptionIgnore = true;
     group.userData.combatIgnore = true;
@@ -301,6 +301,20 @@ function positionFrom(value, out) {
 function toVector3(value, out) {
   if (value?.isVector3) return out.copy(value);
   return out.set(value?.x ?? 0, value?.y ?? 0, value?.z ?? 0);
+}
+
+function seededUnit(seed) {
+  return hashString(seed) / 4294967295;
+}
+
+function hashString(value) {
+  const text = String(value);
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
 
 function isDescendantOf(object, root) {

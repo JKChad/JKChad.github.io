@@ -119,7 +119,21 @@ export class PostFx {
   }
 
   render() {
-    this.composer.render(this._lastDt);
+    // SwiftShader / broken blit paths: fall back to direct render.
+    const gl = this.renderer.getContext?.();
+    const debug = gl?.getExtension?.('WEBGL_debug_renderer_info');
+    const rendererStr = debug
+      ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) || '')
+      : '';
+    if (/swiftshader|llvmpipe|softpipe/i.test(rendererStr) || this._budget?.bloomEnabled === false && this._budget?.smaaEnabled === false) {
+      this.renderer.render(this.scene, this.camera);
+    } else {
+      try {
+        this.composer.render(this._lastDt);
+      } catch {
+        this.renderer.render(this.scene, this.camera);
+      }
+    }
     this._lastDt = 0;
   }
 

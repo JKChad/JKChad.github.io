@@ -25,6 +25,7 @@ export class WeaponSystem {
     this._triggerHeld = false;
     this._fireCooldown = 0;
     this._reloadElapsed = 0;
+    this._reloadPhase = null;
     this._shotFlashT = 0;
     this._meleeCooldown = 0;
 
@@ -63,6 +64,15 @@ export class WeaponSystem {
       reloading: this.reloading,
       reloadT: this.reloadT,
       firing: this._shotFlashT > 0,
+      lookVelocity: this.player.lookVelocity,
+      velocity: this.player.velocity,
+      localVelocity: this.player.localVelocity,
+      horizontalSpeed: this.player.horizontalSpeed,
+      accel: this.player.accel,
+      accelVector: this.player.accelVector,
+      localAccel: this.player.localAccel,
+      moveState: this.player.moveState,
+      crouchAmount: this.player.crouchAmount,
     });
   }
 
@@ -114,7 +124,7 @@ export class WeaponSystem {
     });
 
     this.audio?.play('shot');
-    this.view.punch(CONFIG.weapon.recoilKick);
+    this.view.punch(CONFIG.weapon.recoilKick, { ads: this.isAds });
     if (this.player.addRecoil) {
       const hipMul = this.isAds ? 0.48 : 1;
       const yawKick = (Math.random() - 0.5) * CONFIG.weapon.recoilKick * 0.36 * hipMul;
@@ -158,6 +168,7 @@ export class WeaponSystem {
     this.reloading = true;
     this.reloadT = 0;
     this._reloadElapsed = 0;
+    this._reloadPhase = null;
     this._triggerHeld = false;
     this._setAds(false);
     this.audio?.play('reload');
@@ -166,6 +177,7 @@ export class WeaponSystem {
   _updateReload(dt) {
     this._reloadElapsed += dt;
     this.reloadT = clamp(this._reloadElapsed / CONFIG.weapon.reloadTime, 0, 1);
+    this._emitReloadPhaseForT(this.reloadT);
 
     if (this.reloadT < 1) return;
 
@@ -175,7 +187,24 @@ export class WeaponSystem {
     this.reserve -= loaded;
     this.reloading = false;
     this.reloadT = 0;
+    this._emitReloadPhase('complete');
     this._emitAmmo();
+  }
+
+  _emitReloadPhaseForT(t) {
+    if (t >= 0.78) {
+      this._emitReloadPhase('rack');
+    } else if (t >= 0.52) {
+      this._emitReloadPhase('magIn');
+    } else if (t >= 0.24) {
+      this._emitReloadPhase('magOut');
+    }
+  }
+
+  _emitReloadPhase(phase) {
+    if (phase === this._reloadPhase) return;
+    this._reloadPhase = phase;
+    this.bus.emit('reload:phase', { phase });
   }
 
   _melee() {
@@ -191,7 +220,7 @@ export class WeaponSystem {
     });
 
     this.audio?.play('melee');
-    this.view.punch(CONFIG.weapon.recoilKick * 0.6);
+    this.view.punch(CONFIG.weapon.recoilKick * 0.6, { melee: true });
   }
 
   _updateFov(dt) {

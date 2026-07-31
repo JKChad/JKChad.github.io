@@ -8,6 +8,7 @@ const ROOM_Z_MIN = -CONFIG.room.depth * 0.5 + 0.7;
 const ROOM_Z_MAX = CONFIG.room.depth * 0.5 - 0.7;
 
 const _target = new THREE.Vector3();
+const _lookTarget = new THREE.Vector3();
 const _forward = new THREE.Vector3();
 const _right = new THREE.Vector3();
 
@@ -52,6 +53,7 @@ export class PartnerGhost {
     this.mesh = this.group;
     this.position = this.group.position;
     this.radius = 0.45;
+    this.state = 'follow-side';
 
     this.visual = new THREE.Group();
     this.group.add(this.visual);
@@ -59,6 +61,8 @@ export class PartnerGhost {
 
     this._opacity = CONFIG.attention.fadeMaxOpacity * 0.5;
     this._time = 0;
+    this._aimBlend = 0;
+    this._scanBlend = 0;
     this._materials = [
       makeMaterial(0x303946, 0x081014, this._opacity),
       makeMaterial(0x121920, 0x000000, this._opacity),
@@ -70,16 +74,26 @@ export class PartnerGhost {
     this.group.renderOrder = 4;
   }
 
-  update(dt, playerPos, playerYaw) {
+  update(dt, playerPos, playerYaw, context = {}) {
     const safeDt = Math.min(dt, CONFIG.maxFrameDt);
     this._time += safeDt;
+    const mode = context?.mode ?? 'stealth';
+    const guardPos = context?.guardPos ?? null;
+    const hasGuard = Boolean(
+      guardPos && Number.isFinite(guardPos.x) && Number.isFinite(guardPos.z),
+    );
+    const loud = mode === 'loud';
+    this.state = loud ? 'aim' : hasGuard ? 'scan' : 'follow-side';
 
     _forward.set(-Math.sin(playerYaw), 0, -Math.cos(playerYaw));
     _right.set(Math.cos(playerYaw), 0, -Math.sin(playerYaw));
 
     const orbit = Math.sin(this._time * 0.47);
-    const sidestep = -2.05 + Math.sin(this._time * 0.73) * 0.75;
-    const depth = -1.55 + Math.cos(this._time * 0.41) * 0.7 + orbit * 0.25;
+    const sidestep = (loud ? -1.35 : -2.05)
+      + Math.sin(this._time * 0.73) * (loud ? 0.34 : 0.75);
+    const depth = (loud ? -1.08 : -1.55)
+      + Math.cos(this._time * 0.41) * (loud ? 0.34 : 0.7)
+      + orbit * 0.25;
 
     _target.copy(playerPos);
     _target.addScaledVector(_right, sidestep);
@@ -92,14 +106,19 @@ export class PartnerGhost {
     this.position.y = 0;
     this.position.z = damp(this.position.z, _target.z, 3.8, safeDt);
 
-    const desiredYaw = Math.atan2(playerPos.x - this.position.x, playerPos.z - this.position.z);
+    _lookTarget.copy(hasGuard ? guardPos : playerPos);
+    const desiredYaw = Math.atan2(_lookTarget.x - this.position.x, _lookTarget.z - this.position.z);
     this.group.rotation.y = this._dampAngle(this.group.rotation.y, desiredYaw, 7.5, safeDt);
+    this._aimBlend = damp(this._aimBlend, loud ? 1 : 0, 8, safeDt);
+    this._scanBlend = damp(this._scanBlend, hasGuard && !loud ? 1 : 0, 7, safeDt);
 
     const walkBob = Math.sin(this._time * 5.1) * 0.035;
     const idleBob = Math.sin(this._time * 1.7) * 0.025;
-    this.visual.position.y = 0.02 + walkBob + idleBob;
+    this.visual.position.y = 0.02 + walkBob * (1 - this._aimBlend * 0.45) + idleBob;
     this.visual.rotation.z = Math.sin(this._time * 1.2) * 0.025;
     this.visual.rotation.x = Math.sin(this._time * 0.95) * 0.015;
+    this.visual.rotation.y = Math.sin(this._time * 0.82) * 0.08 * this._scanBlend;
+    this._updatePose();
 
     this._updateOpacity(safeDt);
   }
@@ -145,6 +164,27 @@ export class PartnerGhost {
     this.rifle.add(box(0.08, 0.07, 0.52, dark, [0, 0, -0.05]));
     this.rifle.add(cyl(0.018, 0.018, 0.32, dark, [0, 0.004, -0.43], [Math.PI * 0.5, 0, 0], 12));
     this.visual.add(this.rifle);
+  }
+
+  _updatePose() {
+    const aim = this._aimBlend;
+    const scan = this._scanBlend;
+    this.rifle.position.set(
+      0.2 - aim * 0.16,
+      1.0 + aim * 0.18 + scan * 0.03,
+      -0.19 - aim * 0.08,
+    );
+    this.rifle.rotation.set(
+      0.08 - aim * 0.22 + scan * 0.03,
+      -0.16 + aim * 0.12 + Math.sin(this._time * 0.9) * 0.04 * scan,
+      -0.18 + aim * 0.16,
+    );
+
+    this.leftArm.rotation.set(0.05 - aim * 0.82, scan * 0.06, -0.08 - aim * 0.32);
+    this.rightArm.rotation.set(0.05 - aim * 0.94, -scan * 0.06, 0.08 + aim * 0.32);
+    this.head.rotation.y = Math.sin(this._time * 0.9) * 0.16 * scan;
+    this.mask.rotation.y = this.head.rotation.y;
+    this.torso.rotation.y = Math.sin(this._time * 0.7) * 0.05 * scan;
   }
 
   _updateOpacity(dt) {

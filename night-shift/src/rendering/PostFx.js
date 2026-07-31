@@ -33,6 +33,17 @@ export class PostFx {
       stencilBuffer: false,
     });
     this._budget = { bloomEnabled: true, smaaEnabled: true };
+    this._softwareGl = false;
+    try {
+      const gl = renderer.getContext?.();
+      const debug = gl?.getExtension?.('WEBGL_debug_renderer_info');
+      const rendererStr = debug
+        ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) || '')
+        : '';
+      this._softwareGl = /swiftshader|llvmpipe|softpipe/i.test(rendererStr);
+    } catch {
+      this._softwareGl = false;
+    }
 
     this.renderPass = new RenderPass(scene, camera);
     this.composer.addPass(this.renderPass);
@@ -119,13 +130,8 @@ export class PostFx {
   }
 
   render() {
-    // SwiftShader / broken blit paths: fall back to direct render.
-    const gl = this.renderer.getContext?.();
-    const debug = gl?.getExtension?.('WEBGL_debug_renderer_info');
-    const rendererStr = debug
-      ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) || '')
-      : '';
-    if (/swiftshader|llvmpipe|softpipe/i.test(rendererStr) || this._budget?.bloomEnabled === false && this._budget?.smaaEnabled === false) {
+    const degraded = this._budget?.bloomEnabled === false && this._budget?.smaaEnabled === false;
+    if (this._softwareGl || degraded) {
       this.renderer.render(this.scene, this.camera);
     } else {
       try {

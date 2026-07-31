@@ -143,9 +143,13 @@ export class Game {
     this.attention.update(dt);
     this.player.update(dt, this.attention.localVisibility);
     this.weapon.update(dt);
+    const guardNear =
+      this.guard?.alive &&
+      this.guard.position.distanceTo(this.player.position) < 10 &&
+      (this.guard.suspicion > 0.15 || this.modes.isLoud);
     this.partner.update(dt, this.player.position, this.player.yaw, {
       mode: this.modes.mode,
-      guardPos: this.guard?.position,
+      guardPos: guardNear ? this.guard.position : null,
     });
     this.lights.update(dt);
     this.perception.update(dt, this.player, this.partner, this.guard);

@@ -19,6 +19,29 @@ const _objectBox = new THREE.Box3();
 const _hurtboxBase = new THREE.Vector3();
 const _hurtboxEye = new THREE.Vector3();
 
+function vectorFrom(value, fallback, out) {
+  if (value?.isVector3) return out.copy(value);
+  if (value && Number.isFinite(value.x) && Number.isFinite(value.y) && Number.isFinite(value.z)) {
+    return out.set(value.x, value.y, value.z);
+  }
+  return out.copy(fallback);
+}
+
+function cloneVector(value) {
+  return value?.isVector3 ? value.clone() : null;
+}
+
+function snapshotHit(hit) {
+  if (!hit) return null;
+  return {
+    object: hit.object ?? null,
+    distance: hit.distance ?? 0,
+    point: cloneVector(hit.point),
+    normal: cloneVector(hit.normal),
+    direction: cloneVector(hit.direction),
+  };
+}
+
 function playerPosition(player, out) {
   if (player?.camera?.getWorldPosition) return player.camera.getWorldPosition(out);
   if (player?.position?.isVector3) return out.copy(player.position);
@@ -46,9 +69,16 @@ export class CombatSystem {
     this.breakableLights = new BreakableLights(scene, bus, audio, lights);
     this.enemies = [];
     this.tracers = [];
+    this.tracerPool = [];
+    this.tracerCursor = 0;
+    this.tracerPoolSize = 28;
     this.playerHurtbox = null;
+    this.playerMaxHealth = 100;
+    this.playerHealth = this.playerMaxHealth;
+    this.playerDowned = false;
     this._reinforcementWave = 0;
     this._secondWaveTimer = null;
+    this._onGuardShot = (payload) => this.handleGuardShot(payload);
 
     this.enemyRoot = new THREE.Group();
     this.enemyRoot.name = 'combat-reinforcements';
@@ -65,6 +95,9 @@ export class CombatSystem {
       roughness: 0.7,
       metalness: 0.03,
     });
+
+    this._createTracerPool();
+    this.bus?.on?.('guard:shot', this._onGuardShot);
   }
 
   handleShot(payload = {}) {
@@ -83,6 +116,50 @@ export class CombatSystem {
 
     this.decals.spawn(hit);
     return hit;
+  }
+
+  handleGuardShot(payload = {}) {
+    vectorFrom(payload.origin, new THREE.Vector3(), _shotStart);
+    vectorFrom(payload.direction ?? payload.dir, new THREE.Vector3(0, 0, -1), _dir).normalize();
+    if (_dir.lengthSq() < 0.001) return null;
+
+    const spread = payload.spread ?? 0.018;
+    this._applyEnemySpread(_dir, spread);
+
+    const maxDistance = payload.maxDistance ?? 28;
+    const hit = this.hitscan.fire(
+      {
+        origin: _shotStart,
+        direction: _dir,
+        spread: 0,
+        ads: true,
+        maxDistance,
+      },
+      { layers: [HITSCAN_LAYERS.world, HITSCAN_LAYERS.player], maxDistance }
+    );
+
+    this.audio?.play?.('shot');
+    if (hit && isPlayerObject(hit.object)) {
+      this._spawnTracer(_shotStart, hit.point, 0xff4f3f);
+      this._damagePlayerFromHit(hit, {
+        damage: payload.damage ?? 7,
+        source: payload.guard?.mesh ?? payload.guard ?? null,
+        guard: payload.guard ?? null,
+        origin: _shotStart,
+        direction: hit.direction ?? _dir,
+      });
+      return hit;
+    }
+
+    if (hit) {
+      this.decals.spawn(hit, { size: 0.08, spark: true });
+      this._spawnTracer(_shotStart, hit.point, 0xff7d55);
+      return hit;
+    }
+
+    _shotEnd.copy(_shotStart).addScaledVector(_dir, maxDistance);
+    this._spawnTracer(_shotStart, _shotEnd, 0xff7d55);
+    return null;
   }
 
   spawnReinforcements(options = {}) {
@@ -216,6 +293,42 @@ export class CombatSystem {
     this.ragdoll.spawnRagdoll(enemy, _dir, hit?.point);
     this.bus?.emit?.('combat:enemyKilled', { enemy, hit });
     if (options.emitGuardKilled !== false) this.bus?.emit?.('guard:killed', { guard: enemy, hit });
+  }
+
+  _damagePlayerFromHit(hit, options = {}) {
+    if (this.playerDowned || !hit) return null;
+
+    const damage = Math.max(0, Math.round(options.damage ?? 0));
+    if (damage <= 0) return null;
+
+    this.playerHealth = Math.max(0, this.playerHealth - damage);
+    const event = {
+      damage,
+      hp: this.playerHealth,
+      maxHp: this.playerMaxHealth,
+      source: options.source ?? null,
+      guard: options.guard ?? null,
+      origin: cloneVector(options.origin),
+      point: cloneVector(hit.point),
+      normal: cloneVector(hit.normal),
+      direction: cloneVector(options.direction) ?? cloneVector(hit.direction),
+      hit: snapshotHit(hit),
+    };
+
+    this.bus?.emit?.('player:damaged', event);
+    this.bus?.emit?.('player:health', {
+      hp: this.playerHealth,
+      maxHp: this.playerMaxHealth,
+      damage,
+      source: event.source,
+    });
+
+    if (this.playerHealth <= 0 && !this.playerDowned) {
+      this.playerDowned = true;
+      this.bus?.emit?.('player:downed', event);
+    }
+
+    return event;
   }
 
   _enemyRootFor(object) {
@@ -396,10 +509,11 @@ export class CombatSystem {
     if (hit && isPlayerObject(hit.object)) {
       this._spawnTracer(_shotStart, hit.point, 0xff4f3f);
       this.audio?.play?.('shot');
-      this.bus?.emit?.('player:damaged', {
+      this._damagePlayerFromHit(hit, {
         damage: Math.round(THREE.MathUtils.lerp(4, 8, accuracy)),
         source: enemy.root,
-        point: hit.point.clone(),
+        origin: _shotStart,
+        direction: hit.direction ?? _dir,
       });
       return;
     }
@@ -535,19 +649,56 @@ export class CombatSystem {
     return false;
   }
 
+  _createTracerPool() {
+    for (let i = 0; i < this.tracerPoolSize; i++) {
+      const positions = new Float32Array(6);
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const material = new THREE.LineBasicMaterial({
+        color: 0xff7d55,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+      });
+      const line = new THREE.Line(geometry, material);
+      line.visible = false;
+      line.userData.isCombatVfx = true;
+      line.userData.combatIgnore = true;
+      this.scene.add(line);
+      this.tracerPool.push({
+        line,
+        positions,
+        age: 0,
+        ttl: 0.08,
+        active: false,
+      });
+    }
+  }
+
   _spawnTracer(start, end, color) {
-    const geometry = new THREE.BufferGeometry().setFromPoints([start.clone(), end.clone()]);
-    const material = new THREE.LineBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0.7,
-      depthWrite: false,
-    });
-    const line = new THREE.Line(geometry, material);
-    line.userData.isCombatVfx = true;
-    line.userData.combatIgnore = true;
-    this.scene.add(line);
-    this.tracers.push({ line, age: 0, ttl: 0.08 });
+    if (this.tracerPool.length === 0) return;
+
+    const tracer = this.tracerPool[this.tracerCursor];
+    this.tracerCursor = (this.tracerCursor + 1) % this.tracerPool.length;
+    if (tracer.active) {
+      const index = this.tracers.indexOf(tracer);
+      if (index >= 0) this.tracers.splice(index, 1);
+    }
+
+    tracer.positions[0] = start.x;
+    tracer.positions[1] = start.y;
+    tracer.positions[2] = start.z;
+    tracer.positions[3] = end.x;
+    tracer.positions[4] = end.y;
+    tracer.positions[5] = end.z;
+    tracer.line.geometry.attributes.position.needsUpdate = true;
+    tracer.line.material.color.setHex(color);
+    tracer.line.material.opacity = 0.7;
+    tracer.line.visible = true;
+    tracer.age = 0;
+    tracer.ttl = 0.08;
+    tracer.active = true;
+    this.tracers.push(tracer);
   }
 
   _updateTracers(dt) {
@@ -556,9 +707,9 @@ export class CombatSystem {
       tracer.age += dt;
       const life = 1 - tracer.age / tracer.ttl;
       if (life <= 0) {
-        this.scene.remove(tracer.line);
-        tracer.line.geometry.dispose();
-        tracer.line.material.dispose();
+        tracer.line.visible = false;
+        tracer.line.material.opacity = 0;
+        tracer.active = false;
         this.tracers.splice(i, 1);
       } else {
         tracer.line.material.opacity = 0.7 * life;

@@ -5,9 +5,6 @@ import { WeaponView } from './WeaponView.js';
 
 const _origin = new THREE.Vector3();
 const _direction = new THREE.Vector3();
-const _right = new THREE.Vector3();
-const _up = new THREE.Vector3();
-const _jitter = new THREE.Vector3();
 
 export class WeaponSystem {
   constructor(player, bus, audio) {
@@ -119,6 +116,7 @@ export class WeaponSystem {
     this.bus.emit('weapon:fired', {
       origin: _origin.clone(),
       direction: _direction.clone(),
+      spread: this.isAds ? CONFIG.weapon.pelletSpreadAds : CONFIG.weapon.pelletSpreadHip,
       damage: CONFIG.weapon.damage,
       ads: this.isAds,
     });
@@ -137,18 +135,6 @@ export class WeaponSystem {
   _buildShotRay(origin, direction) {
     this.player.camera.getWorldPosition(origin);
     this.player.camera.getWorldDirection(direction);
-
-    const spread = this.isAds ? CONFIG.weapon.pelletSpreadAds : CONFIG.weapon.pelletSpreadHip;
-    if (spread > 0) {
-      const angle = Math.random() * Math.PI * 2;
-      const radius = Math.sqrt(Math.random()) * spread;
-      _right.set(1, 0, 0).applyQuaternion(this.player.camera.quaternion);
-      _up.set(0, 1, 0).applyQuaternion(this.player.camera.quaternion);
-      _jitter.copy(_right).multiplyScalar(Math.cos(angle) * radius);
-      _jitter.addScaledVector(_up, Math.sin(angle) * radius);
-      direction.add(_jitter).normalize();
-    }
-
     return direction;
   }
 

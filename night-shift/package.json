@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "smoke": "npm run build && node scripts/smoke.mjs"
+    "smoke": "npm run build && node scripts/smoke.mjs",
+    "test:visual": "npm run build && node scripts/visual-regression.mjs",
+    "test:visual:update": "npm run build && node scripts/visual-regression.mjs --update"
   },
   "dependencies": {
     "cannon-es": "^0.20.0",

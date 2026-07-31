@@ -1,0 +1,20 @@
+body.ns-boot-error {
+  cursor: default;
+}
+
+body.ns-running {
+  cursor: none;
+}
+
+#boot.boot-error .boot-tag {
+  color: var(--alert);
+}
+
+#boot.boot-error .boot-copy {
+  color: var(--paper);
+}
+
+.boot-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

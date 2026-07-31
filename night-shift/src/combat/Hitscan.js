@@ -5,9 +5,10 @@ export const HITSCAN_LAYERS = Object.freeze({
   world: 'world',
   enemies: 'enemies',
   lights: 'lights',
+  player: 'player',
 });
 
-const DEFAULT_LAYERS = new Set(Object.values(HITSCAN_LAYERS));
+const DEFAULT_LAYERS = new Set([HITSCAN_LAYERS.world, HITSCAN_LAYERS.enemies, HITSCAN_LAYERS.lights]);
 const _origin = new THREE.Vector3();
 const _direction = new THREE.Vector3();
 const _right = new THREE.Vector3();
@@ -67,14 +68,37 @@ export function isPotentialLightObject(object) {
   });
 }
 
+export function isPlayerObject(object) {
+  return hasAncestorFlag(object, (candidate) => candidate.userData?.isPlayer === true);
+}
+
+function nowSeconds() {
+  if (typeof performance !== 'undefined' && performance.now) return performance.now() * 0.001;
+  return Date.now() * 0.001;
+}
+
 export class Hitscan {
   constructor(scene, options = {}) {
     this.scene = scene;
     this.maxDistance = options.maxDistance ?? 80;
+    this.refreshInterval = options.refreshInterval ?? 0.25;
     this.raycaster = new THREE.Raycaster();
     this.raycaster.near = 0.02;
     this.raycaster.far = this.maxDistance;
     this._candidates = [];
+    this._candidateSet = new Set();
+    this._intersections = [];
+    this._registered = new Map();
+    this._layerCandidates = new Map(Object.values(HITSCAN_LAYERS).map((layer) => [layer, []]));
+    this._lastRefresh = -Infinity;
+    this._candidateDirty = true;
+    this._hitResult = {
+      point: new THREE.Vector3(),
+      normal: new THREE.Vector3(),
+      object: null,
+      distance: 0,
+      direction: new THREE.Vector3(),
+    };
   }
 
   fire(payload = {}, options = {}) {
@@ -91,23 +115,40 @@ export class Hitscan {
     this.raycaster.far = maxDistance;
     this.raycaster.set(origin, direction);
 
-    this.scene.updateMatrixWorld?.(true);
+    this._refreshCandidates(options.refreshCandidates === true);
     this._collectCandidates(layers);
-    const intersections = this.raycaster.intersectObjects(this._candidates, true);
+    this._intersections.length = 0;
+    const intersections = this.raycaster.intersectObjects(this._candidates, true, this._intersections);
     for (const intersection of intersections) {
       const object = intersection.object;
       if (!object || this._isIgnored(object)) continue;
-      const normal = this._normalFor(intersection, direction);
-      return {
-        point: intersection.point.clone(),
-        normal,
-        object,
-        distance: intersection.distance,
-        direction: direction.clone(),
-      };
+      const hit = this._hitResult;
+      hit.point.copy(intersection.point);
+      this._normalFor(intersection, direction, hit.normal);
+      hit.object = object;
+      hit.distance = intersection.distance;
+      hit.direction.copy(direction);
+      return hit;
     }
 
     return null;
+  }
+
+  registerCandidate(object, layer = null) {
+    if (!object) return object;
+    this._registered.set(object, layer ?? object.userData?.combatLayer ?? HITSCAN_LAYERS.world);
+    this.invalidateCandidates();
+    return object;
+  }
+
+  unregisterCandidate(object) {
+    if (!object) return;
+    this._registered.delete(object);
+    this.invalidateCandidates();
+  }
+
+  invalidateCandidates() {
+    this._candidateDirty = true;
   }
 
   _applySpread(direction, spread) {
@@ -126,22 +167,78 @@ export class Hitscan {
 
   _collectCandidates(layers) {
     this._candidates.length = 0;
+    this._candidateSet.clear();
+
+    for (const layer of layers) {
+      const list = this._layerCandidates.get(layer);
+      if (!list) continue;
+      for (const object of list) {
+        if (!object || this._candidateSet.has(object) || this._isIgnored(object)) continue;
+        this._candidateSet.add(object);
+        this._candidates.push(object);
+      }
+    }
+  }
+
+  _refreshCandidates(force = false) {
+    const now = nowSeconds();
+    if (!force && !this._candidateDirty && now - this._lastRefresh < this.refreshInterval) return;
+
+    for (const list of this._layerCandidates.values()) list.length = 0;
+    const layerSets = new Map(Object.values(HITSCAN_LAYERS).map((layer) => [layer, new Set()]));
+
     this.scene.traverse((object) => {
-      if (!object.isMesh || !object.visible || this._isIgnored(object)) return;
-      if (!this._matchesLayers(object, layers)) return;
-      this._candidates.push(object);
+      if (!this._isSceneCandidate(object)) return;
+      const layer = this._layerFor(object);
+      if (layer) layerSets.get(layer)?.add(object);
     });
+
+    for (const [root, layer] of this._registered) {
+      this._addRegisteredCandidate(root, layer, layerSets);
+    }
+
+    for (const [layer, set] of layerSets) {
+      this._layerCandidates.get(layer).push(...set);
+    }
+
+    this._lastRefresh = now;
+    this._candidateDirty = false;
   }
 
   _matchesLayers(object, layers) {
     const explicitLayer = object.userData?.combatLayer;
     if (explicitLayer && layers.has(explicitLayer)) return true;
 
+    if (layers.has(HITSCAN_LAYERS.player) && isPlayerObject(object)) return true;
     if (layers.has(HITSCAN_LAYERS.enemies) && isEnemyObject(object)) return true;
     if (layers.has(HITSCAN_LAYERS.lights) && isPotentialLightObject(object)) return true;
 
     if (!layers.has(HITSCAN_LAYERS.world)) return false;
-    return !isEnemyObject(object) && !isPotentialLightObject(object);
+    return !isEnemyObject(object) && !isPotentialLightObject(object) && !isPlayerObject(object);
+  }
+
+  _layerFor(object) {
+    const explicitLayer = object.userData?.combatLayer;
+    if (explicitLayer && this._layerCandidates.has(explicitLayer)) return explicitLayer;
+    if (isPlayerObject(object)) return HITSCAN_LAYERS.player;
+    if (isEnemyObject(object)) return HITSCAN_LAYERS.enemies;
+    if (isPotentialLightObject(object)) return HITSCAN_LAYERS.lights;
+    return HITSCAN_LAYERS.world;
+  }
+
+  _addRegisteredCandidate(root, layer, layerSets) {
+    const targetLayer = layerSets.has(layer) ? layer : this._layerFor(root);
+    const add = (object) => {
+      if (!object?.isMesh || this._isIgnored(object)) return;
+      layerSets.get(targetLayer)?.add(object);
+    };
+
+    if (root.isMesh) add(root);
+    root.traverse?.(add);
+  }
+
+  _isSceneCandidate(object) {
+    return object.isMesh && object.visible && !this._isIgnored(object);
   }
 
   _isIgnored(object) {
@@ -154,15 +251,15 @@ export class Hitscan {
     );
   }
 
-  _normalFor(intersection, direction) {
+  _normalFor(intersection, direction, out = _normal) {
     if (intersection.face) {
       _normalMatrix.getNormalMatrix(intersection.object.matrixWorld);
-      _normal.copy(intersection.face.normal).applyNormalMatrix(_normalMatrix).normalize();
+      out.copy(intersection.face.normal).applyNormalMatrix(_normalMatrix).normalize();
     } else {
-      _normal.copy(direction).multiplyScalar(-1).normalize();
+      out.copy(direction).multiplyScalar(-1).normalize();
     }
 
-    if (_normal.dot(direction) > 0) _normal.multiplyScalar(-1);
-    return _normal.clone();
+    if (out.dot(direction) > 0) out.multiplyScalar(-1);
+    return out;
   }
 }

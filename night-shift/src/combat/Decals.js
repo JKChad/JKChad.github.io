@@ -34,10 +34,10 @@ function createBulletMarkTexture() {
   return texture;
 }
 
-function randomTangentVelocity(normal) {
-  const tangent = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.7, Math.random() - 0.5);
-  tangent.addScaledVector(normal, 1.8 + Math.random() * 2.5);
-  return tangent;
+function randomTangentVelocity(normal, out) {
+  out.set(Math.random() - 0.5, Math.random() * 0.7, Math.random() - 0.5);
+  out.addScaledVector(normal, 1.8 + Math.random() * 2.5);
+  return out;
 }
 
 export class Decals {
@@ -45,8 +45,13 @@ export class Decals {
     this.scene = scene;
     this.max = options.max ?? 80;
     this.cursor = 0;
+    this.decalTtl = options.decalTtl ?? 14;
     this.decals = [];
     this.sparks = [];
+    this.sparkPool = [];
+    this.sparkCursor = 0;
+    this.sparkPoolSize = options.sparkPoolSize ?? 36;
+    this.sparkPointCount = options.sparkPointCount ?? 12;
 
     const map = createBulletMarkTexture();
     this.geometry = new THREE.PlaneGeometry(1, 1);
@@ -62,13 +67,44 @@ export class Decals {
     });
 
     for (let i = 0; i < this.max; i++) {
-      const decal = new THREE.Mesh(this.geometry, this.material);
+      const decal = new THREE.Mesh(this.geometry, this.material.clone());
       decal.visible = false;
       decal.renderOrder = 2;
       decal.userData.isDecal = true;
       decal.userData.combatIgnore = true;
+      decal.userData.age = 0;
+      decal.userData.ttl = this.decalTtl;
+      decal.userData.baseOpacity = this.material.opacity;
       this.scene.add(decal);
       this.decals.push(decal);
+    }
+
+    for (let i = 0; i < this.sparkPoolSize; i++) {
+      const positions = new Float32Array(this.sparkPointCount * 3);
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geometry.setDrawRange(0, 0);
+      const material = new THREE.PointsMaterial({
+        color: 0xffc36a,
+        size: 0.035,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+      });
+      const points = new THREE.Points(geometry, material);
+      points.visible = false;
+      points.userData.isCombatVfx = true;
+      points.userData.combatIgnore = true;
+      this.scene.add(points);
+      this.sparkPool.push({
+        points,
+        positions,
+        velocities: Array.from({ length: this.sparkPointCount }, () => new THREE.Vector3()),
+        age: 0,
+        ttl: 0,
+        count: 0,
+        active: false,
+      });
     }
   }
 
@@ -84,7 +120,13 @@ export class Decals {
     decal.position.copy(_point).addScaledVector(_normal, options.offset ?? 0.014);
     decal.quaternion.setFromUnitVectors(_zAxis, _normal);
     decal.rotateZ(Math.random() * Math.PI * 2);
-    decal.scale.set(size * (0.75 + Math.random() * 0.35), size * (0.75 + Math.random() * 0.35), 1);
+    decal.scale.set(size * (0.7 + Math.random() * 0.45), size * (0.72 + Math.random() * 0.42), 1);
+    const shade = 0.82 + Math.random() * 0.32;
+    decal.material.color.setRGB(0.082 * shade, 0.063 * shade, 0.047 * shade);
+    decal.userData.age = 0;
+    decal.userData.ttl = options.ttl ?? this.decalTtl + Math.random() * 5;
+    decal.userData.baseOpacity = options.opacity ?? 0.58 + Math.random() * 0.22;
+    decal.material.opacity = decal.userData.baseOpacity;
     decal.visible = true;
 
     if (options.spark !== false) this.spawnSpark(_point, _normal);
@@ -92,53 +134,62 @@ export class Decals {
   }
 
   spawnSpark(point, normal, options = {}) {
-    const count = options.count ?? 9;
-    const positions = new Float32Array(count * 3);
-    const velocities = [];
-    for (let i = 0; i < count; i++) {
-      positions[i * 3] = point.x;
-      positions[i * 3 + 1] = point.y;
-      positions[i * 3 + 2] = point.z;
-      velocities.push(randomTangentVelocity(normal));
+    const count = Math.min(options.count ?? 9, this.sparkPointCount);
+    const spark = this.sparkPool[this.sparkCursor];
+    this.sparkCursor = (this.sparkCursor + 1) % this.sparkPool.length;
+    if (spark.active) {
+      const index = this.sparks.indexOf(spark);
+      if (index >= 0) this.sparks.splice(index, 1);
     }
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const material = new THREE.PointsMaterial({
-      color: options.color ?? 0xffc36a,
-      size: options.size ?? 0.035,
-      transparent: true,
-      opacity: 0.95,
-      depthWrite: false,
-    });
-    const points = new THREE.Points(geometry, material);
-    points.userData.isCombatVfx = true;
-    points.userData.combatIgnore = true;
-    this.scene.add(points);
-
-    this.sparks.push({
-      points,
-      velocities,
-      age: 0,
-      ttl: options.ttl ?? 0.16,
-    });
+    for (let i = 0; i < count; i++) {
+      spark.positions[i * 3] = point.x;
+      spark.positions[i * 3 + 1] = point.y;
+      spark.positions[i * 3 + 2] = point.z;
+      randomTangentVelocity(normal, spark.velocities[i]);
+    }
+    spark.points.geometry.attributes.position.needsUpdate = true;
+    spark.points.geometry.setDrawRange(0, count);
+    spark.points.material.color.setHex(options.color ?? (Math.random() > 0.35 ? 0xffc36a : 0xffe1a3));
+    spark.points.material.size = options.size ?? 0.028 + Math.random() * 0.018;
+    spark.points.material.opacity = 0.95;
+    spark.points.visible = true;
+    spark.age = 0;
+    spark.ttl = options.ttl ?? 0.13 + Math.random() * 0.06;
+    spark.count = count;
+    spark.active = true;
+    this.sparks.push(spark);
   }
 
   update(dt) {
+    for (const decal of this.decals) {
+      if (!decal.visible) continue;
+      decal.userData.age += dt;
+      const ttl = Math.max(0.001, decal.userData.ttl);
+      if (decal.userData.age >= ttl) {
+        decal.visible = false;
+        continue;
+      }
+
+      const fadeStart = ttl * 0.58;
+      const fade = decal.userData.age <= fadeStart ? 1 : 1 - (decal.userData.age - fadeStart) / (ttl - fadeStart);
+      decal.material.opacity = decal.userData.baseOpacity * Math.max(0, fade);
+    }
+
     for (let i = this.sparks.length - 1; i >= 0; i--) {
       const spark = this.sparks[i];
       spark.age += dt;
       const life = 1 - spark.age / spark.ttl;
       if (life <= 0) {
-        this.scene.remove(spark.points);
-        spark.points.geometry.dispose();
-        spark.points.material.dispose();
+        spark.points.visible = false;
+        spark.points.geometry.setDrawRange(0, 0);
+        spark.active = false;
         this.sparks.splice(i, 1);
         continue;
       }
 
       const positions = spark.points.geometry.attributes.position;
-      for (let p = 0; p < spark.velocities.length; p++) {
+      for (let p = 0; p < spark.count; p++) {
         const velocity = spark.velocities[p];
         velocity.y -= 7.5 * dt;
         positions.array[p * 3] += velocity.x * dt;
@@ -148,5 +199,21 @@ export class Decals {
       positions.needsUpdate = true;
       spark.points.material.opacity = Math.max(0, life);
     }
+  }
+
+  dispose() {
+    for (const decal of this.decals) {
+      this.scene.remove(decal);
+      decal.material.dispose();
+    }
+    for (const spark of this.sparkPool) {
+      this.scene.remove(spark.points);
+      spark.points.geometry.dispose();
+      spark.points.material.dispose();
+    }
+    const map = this.material.map;
+    this.material.dispose();
+    this.geometry.dispose();
+    map?.dispose?.();
   }
 }

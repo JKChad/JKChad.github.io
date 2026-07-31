@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import { CONFIG } from '../config.js';
 
 const _box = new THREE.Box3();
 const _center = new THREE.Vector3();
@@ -7,6 +8,12 @@ const _size = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
 const _impulse = new THREE.Vector3();
 const _offset = new THREE.Vector3();
+const _hit = new THREE.Vector3();
+const _relative = new CANNON.Vec3();
+const COLLISION_GROUPS = Object.freeze({
+  ragdoll: 1,
+  world: 2,
+});
 
 function toCannonVec3(vector) {
   return new CANNON.Vec3(vector.x, vector.y, vector.z);
@@ -20,7 +27,9 @@ export class Ragdoll {
   constructor(scene, options = {}) {
     this.scene = scene;
     this.freezeAfter = options.freezeAfter ?? 3;
+    this.maxActive = options.maxActive ?? 4;
     this.active = [];
+    this.worldBodies = [];
 
     this.world = new CANNON.World({
       gravity: new CANNON.Vec3(0, -9.82, 0),
@@ -28,14 +37,10 @@ export class Ragdoll {
     this.world.allowSleep = true;
     this.world.defaultContactMaterial.friction = 0.55;
     this.world.defaultContactMaterial.restitution = 0.08;
+    this.worldMaterial = new CANNON.Material('ragdoll-world');
+    this.ragdollMaterial = new CANNON.Material('ragdoll-body');
 
-    const floor = new CANNON.Body({
-      mass: 0,
-      shape: new CANNON.Plane(),
-      material: new CANNON.Material('ragdoll-floor'),
-    });
-    floor.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-    this.world.addBody(floor);
+    this._addRoomColliders();
 
     this.material = new THREE.MeshStandardMaterial({
       color: 0x2a2f38,
@@ -46,6 +51,9 @@ export class Ragdoll {
 
   spawnRagdoll(fromMesh, impulseDir, hitPoint) {
     if (!fromMesh) return null;
+    while (this.active.length >= this.maxActive) {
+      this._disposeRagdoll(this.active[0]);
+    }
 
     _box.setFromObject(fromMesh);
     if (_box.isEmpty()) {
@@ -107,26 +115,18 @@ export class Ragdoll {
         shape: new CANNON.Box(new CANNON.Vec3(dims.x / 2, dims.y / 2, dims.z / 2)),
         position: toCannonVec3(_offset),
         quaternion: toCannonQuat(_quat),
+        material: this.ragdollMaterial,
+        collisionFilterGroup: COLLISION_GROUPS.ragdoll,
+        collisionFilterMask: COLLISION_GROUPS.world,
         linearDamping: 0.38,
         angularDamping: 0.46,
       });
-      body.velocity.set(_impulse.x * 2.0, 1.4 + Math.random() * 0.6, _impulse.z * 2.0);
+      body.velocity.set(_impulse.x * 0.75, 0.35 + Math.random() * 0.35, _impulse.z * 0.75);
       body.angularVelocity.set(
-        (Math.random() - 0.5) * 2.2,
-        (Math.random() - 0.5) * 1.6,
-        (Math.random() - 0.5) * 2.2
+        (Math.random() - 0.5) * 1.2,
+        (Math.random() - 0.5) * 0.9,
+        (Math.random() - 0.5) * 1.2
       );
-      if (hitPoint) {
-        const relativePoint = new CANNON.Vec3(
-          hitPoint.x - body.position.x,
-          hitPoint.y - body.position.y,
-          hitPoint.z - body.position.z
-        );
-        body.applyImpulse(
-          new CANNON.Vec3(_impulse.x * mass * 1.8, Math.max(0.4, _impulse.y + 0.35) * mass, _impulse.z * mass * 1.8),
-          relativePoint
-        );
-      }
 
       this.world.addBody(body);
       ragdoll.bodies.push(body);
@@ -189,6 +189,7 @@ export class Ragdoll {
     );
     this._connect(ragdoll, hips.body, new CANNON.Vec3(0, -height * 0.08, 0), legs.body, new CANNON.Vec3(0, height * 0.18, 0));
 
+    this._applyHitImpulse(ragdoll, hitPoint, _impulse);
     this.active.push(ragdoll);
     return group;
   }
@@ -217,14 +218,110 @@ export class Ragdoll {
     ragdoll.constraints.push(constraint);
   }
 
+  _addRoomColliders() {
+    const width = CONFIG.room?.width ?? 28;
+    const depth = CONFIG.room?.depth ?? 22;
+    const height = CONFIG.room?.height ?? 3.6;
+    const wallT = 0.32;
+
+    this._addWorldBox(
+      'floor',
+      new CANNON.Vec3(width / 2, 0.08, depth / 2),
+      new CANNON.Vec3(0, -0.08, 0)
+    );
+    this._addWorldBox(
+      'left-wall',
+      new CANNON.Vec3(wallT / 2, height / 2, depth / 2),
+      new CANNON.Vec3(-width / 2 - wallT / 2, height / 2, 0)
+    );
+    this._addWorldBox(
+      'right-wall',
+      new CANNON.Vec3(wallT / 2, height / 2, depth / 2),
+      new CANNON.Vec3(width / 2 + wallT / 2, height / 2, 0)
+    );
+    this._addWorldBox(
+      'rear-wall',
+      new CANNON.Vec3(width / 2, height / 2, wallT / 2),
+      new CANNON.Vec3(0, height / 2, -depth / 2 - wallT / 2)
+    );
+    this._addWorldBox(
+      'front-wall',
+      new CANNON.Vec3(width / 2, height / 2, wallT / 2),
+      new CANNON.Vec3(0, height / 2, depth / 2 + wallT / 2)
+    );
+  }
+
+  _addWorldBox(name, halfExtents, position) {
+    const body = new CANNON.Body({
+      mass: 0,
+      shape: new CANNON.Box(halfExtents),
+      position,
+      material: this.worldMaterial,
+      collisionFilterGroup: COLLISION_GROUPS.world,
+      collisionFilterMask: COLLISION_GROUPS.ragdoll,
+    });
+    body.name = `ragdoll-${name}-collider`;
+    this.world.addBody(body);
+    this.worldBodies.push(body);
+  }
+
+  _applyHitImpulse(ragdoll, hitPoint, direction) {
+    const point = hitPoint?.isVector3 ? _hit.copy(hitPoint) : _hit.copy(_center);
+    let best = null;
+    let bestDistance = Infinity;
+    for (const body of ragdoll.bodies) {
+      const dx = point.x - body.position.x;
+      const dy = point.y - body.position.y;
+      const dz = point.z - body.position.z;
+      const distanceSq = dx * dx + dy * dy + dz * dz;
+      if (distanceSq < bestDistance) {
+        bestDistance = distanceSq;
+        best = body;
+      }
+    }
+    if (!best) return;
+
+    _relative.set(point.x - best.position.x, point.y - best.position.y, point.z - best.position.z);
+    const strength = 5.5 + best.mass * 0.8;
+    best.applyImpulse(
+      new CANNON.Vec3(
+        direction.x * strength,
+        Math.max(1.2, direction.y * strength + 1.8),
+        direction.z * strength
+      ),
+      _relative
+    );
+  }
+
   _freeze(ragdoll) {
+    if (ragdoll.frozen) return;
     ragdoll.frozen = true;
     for (const constraint of ragdoll.constraints) this.world.removeConstraint(constraint);
     for (const body of ragdoll.bodies) this.world.removeBody(body);
+    ragdoll.constraints.length = 0;
+    ragdoll.bodies.length = 0;
     for (const mesh of ragdoll.meshes) {
       mesh.userData.combatIgnore = true;
       mesh.matrixAutoUpdate = false;
       mesh.updateMatrix();
     }
+  }
+
+  _disposeRagdoll(ragdoll) {
+    if (!ragdoll) return;
+    this._freeze(ragdoll);
+    this.scene.remove(ragdoll.group);
+    for (const mesh of ragdoll.meshes) {
+      mesh.geometry?.dispose?.();
+    }
+    const index = this.active.indexOf(ragdoll);
+    if (index >= 0) this.active.splice(index, 1);
+  }
+
+  dispose() {
+    for (const ragdoll of [...this.active]) this._disposeRagdoll(ragdoll);
+    for (const body of this.worldBodies) this.world.removeBody(body);
+    this.worldBodies.length = 0;
+    this.material.dispose();
   }
 }

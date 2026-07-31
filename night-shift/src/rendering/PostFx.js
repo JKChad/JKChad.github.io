@@ -49,8 +49,8 @@ export class PostFx {
     this.smaa = new SMAAEffect({ preset: SMAAPreset?.MEDIUM });
     this.vignette = new VignetteEffect({
       technique: VignetteTechnique?.ESKIL,
-      offset: 0.32,
-      darkness: 0.5,
+      offset: 0.38,
+      darkness: 0.38,
     });
     this.grain = new FilmGrainEffect({
       intensity: 0.018,
@@ -144,21 +144,22 @@ export class PostFx {
     const ghost = THREE.MathUtils.clamp(1 - visibility, 0, 1);
     const loud = mode === 'loud' ? 1 : 0;
 
-    const targetBloom = 0.28 + loud * 0.12 + ghost * 0.025;
-    const targetDarkness = 0.5 + loud * 0.085 - ghost * 0.035;
-    const targetGrain = 0.018 + loud * 0.004 + ghost * 0.004;
-    const targetContrast = 1.025 + loud * 0.018 - ghost * 0.01;
+    const targetBloom = 0.26 + loud * 0.1 + ghost * 0.02;
+    const targetDarkness = 0.36 + loud * 0.06 - ghost * 0.03;
+    const targetGrain = 0.016 + loud * 0.003 + ghost * 0.003;
+    const targetContrast = 1.015 + loud * 0.015 - ghost * 0.008;
 
     this.bloom.intensity = damp(this.bloom.intensity, targetBloom, 5.5, dt);
     this.vignette.darkness = damp(this.vignette.darkness, targetDarkness, 4.8, dt);
-    this.vignette.offset = damp(this.vignette.offset, loud ? 0.27 : 0.32, 3.6, dt);
+    this.vignette.offset = damp(this.vignette.offset, loud ? 0.32 : 0.38, 3.6, dt);
     this.grain.intensity = damp(this.grain.intensity, targetGrain, 4.0, dt);
-    this.grain.tealLift = damp(this.grain.tealLift, ghost * 0.36, 3.5, dt);
-    this.grain.redPush = damp(this.grain.redPush, loud * 0.42, 4.8, dt);
+    this.grain.tealLift = damp(this.grain.tealLift, ghost * 0.28, 3.5, dt);
+    this.grain.redPush = damp(this.grain.redPush, loud * 0.35, 4.8, dt);
     this.grain.contrast = damp(this.grain.contrast, targetContrast, 4.0, dt);
 
     if (this.renderer.toneMappingExposure !== undefined) {
-      const targetExposure = 1.0 + loud * 0.045 - ghost * 0.025;
+      // Lift midtones so light pools and furniture read; darkness is authored by lights.
+      const targetExposure = 1.18 + loud * 0.04 - ghost * 0.02;
       this.renderer.toneMappingExposure = damp(this.renderer.toneMappingExposure, targetExposure, 3.2, dt);
     }
   }

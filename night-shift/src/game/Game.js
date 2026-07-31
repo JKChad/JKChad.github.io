@@ -40,7 +40,7 @@ export class Game {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.18;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     container.appendChild(this.renderer.domElement);
@@ -111,6 +111,14 @@ export class Game {
     });
     this.bus.on('light:broken', () => this.economy.onPropertyDamage());
     this.bus.on('guard:spotted', () => this.modes.tripAlarm('spotted'));
+    this.bus.on('player:health', ({ hp }) => {
+      if (hp <= 35) this.hud.el.hint.textContent = `Vitals ${Math.max(0, Math.round(hp))} — extract or bleed out`;
+    });
+    this.bus.on('player:downed', () => {
+      this.hud.banner('DOWNED — CONTRACT VOID', 3.5);
+      this.economy.invoice.hazardPay += 2500;
+      this.hud.setInvoice(this.economy.net());
+    });
   }
 
   async start() {

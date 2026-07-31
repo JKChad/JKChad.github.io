@@ -22,7 +22,7 @@ export class Room {
     this.materials = {
       floor: concrete({
         name: 'oil-dark concrete floor',
-        color: 0x202428,
+        color: 0x1c2426,
         roughness: 0.72,
         envMapIntensity: 0.35,
         repeat: [9, 7],
@@ -30,7 +30,7 @@ export class Room {
       }),
       ceiling: paintedMetal({
         name: 'smoke stained ceiling paint',
-        color: 0x20272c,
+        color: 0x1d2528,
         roughness: 0.78,
         metalness: 0.16,
         repeat: [7, 5],
@@ -38,7 +38,7 @@ export class Room {
       }),
       wall: paintedMetal({
         name: 'worn charcoal wall panels',
-        color: 0x283139,
+        color: 0x253137,
         roughness: 0.74,
         metalness: 0.22,
         repeat: [5, 3],
@@ -46,27 +46,27 @@ export class Room {
       }),
       darkWall: concrete({
         name: 'cold poured concrete wall',
-        color: 0x1e2328,
+        color: 0x182123,
         roughness: 0.9,
         repeat: [5, 3],
         seed: 7,
       }),
       steel: metal({
         name: 'oxidized blue steel',
-        color: 0x46535a,
+        color: 0x3f5055,
         roughness: 0.58,
         seed: 8,
       }),
       blackSteel: metal({
         name: 'blackened structural steel',
-        color: 0x1a2024,
+        color: 0x111a1b,
         roughness: 0.62,
         metalness: 0.7,
         seed: 10,
       }),
       desk: paintedMetal({
         name: 'scuffed desk enamel',
-        color: 0x343b3b,
+        color: 0x303a37,
         roughness: 0.66,
         metalness: 0.42,
         repeat: [3, 2],
@@ -74,14 +74,14 @@ export class Room {
       }),
       crate: paintedMetal({
         name: 'worn olive storage crate',
-        color: 0x3b3f34,
+        color: 0x333d2f,
         roughness: 0.76,
         metalness: 0.28,
         repeat: [2, 2],
         seed: 16,
       }),
-      amber: emissiveTrim({ name: 'amber emergency paint', color: 0xff9c39, intensity: 0.38 }),
-      teal: emissiveTrim({ name: 'low teal status glass', color: 0x35d6cf, intensity: 0.26 }),
+      amber: emissiveTrim({ name: 'sodium amber emergency paint', color: 0xff9b35, intensity: 0.42 }),
+      teal: emissiveTrim({ name: 'dirty green status glass', color: 0x6bb6a2, intensity: 0.24 }),
       glass: glass({ opacity: 0.28, roughness: 0.28 }),
     };
 
@@ -95,6 +95,9 @@ export class Room {
     this._buildDoorframe(width, depth, height);
     this._buildVents(width, depth, height);
     this._buildDetailTrim(width, depth);
+    this._buildCableRuns(width, depth, height);
+    this._buildAsymmetricClutter();
+    this._buildExtractMarker();
 
     this.patrolPath = [
       new THREE.Vector3(-9.5, FLOOR_Y, -6.4),
@@ -106,6 +109,9 @@ export class Room {
 
   _box(name, size, position, material, options = {}) {
     const geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+    if (geometry.attributes.uv && !geometry.attributes.uv2) {
+      geometry.setAttribute('uv2', geometry.attributes.uv.clone());
+    }
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = name;
     mesh.position.copy(position);
@@ -122,6 +128,7 @@ export class Room {
       mesh.userData.lightOccluder = true;
       this.occluders.push(mesh);
     }
+    if (options.edgeTrim) this._addEdgeTrim(mesh, size, options.edgeTrim);
 
     this.group.add(mesh);
 
@@ -130,6 +137,50 @@ export class Room {
       this.colliders.push(new THREE.Box3().setFromObject(mesh));
     }
 
+    return mesh;
+  }
+
+  _addEdgeTrim(mesh, size, options = {}) {
+    const material = options.material ?? this.materials.steel;
+    const thickness = options.thickness ?? 0.055;
+    const insetY = options.insetY ?? 0.012;
+    const strips = [
+      [new THREE.Vector3(size.x + thickness, thickness, thickness), new THREE.Vector3(0, size.y / 2 + insetY, -size.z / 2)],
+      [new THREE.Vector3(size.x + thickness, thickness, thickness), new THREE.Vector3(0, size.y / 2 + insetY, size.z / 2)],
+      [new THREE.Vector3(thickness, thickness, size.z + thickness), new THREE.Vector3(-size.x / 2, size.y / 2 + insetY, 0)],
+      [new THREE.Vector3(thickness, thickness, size.z + thickness), new THREE.Vector3(size.x / 2, size.y / 2 + insetY, 0)],
+    ];
+
+    for (const [stripSize, offset] of strips) {
+      const geometry = new THREE.BoxGeometry(stripSize.x, stripSize.y, stripSize.z);
+      if (geometry.attributes.uv && !geometry.attributes.uv2) {
+        geometry.setAttribute('uv2', geometry.attributes.uv.clone());
+      }
+      const strip = new THREE.Mesh(geometry, material);
+      strip.name = `${mesh.name} worn edge band`;
+      strip.position.copy(offset);
+      strip.castShadow = options.castShadow ?? false;
+      strip.receiveShadow = options.receiveShadow ?? true;
+      mesh.add(strip);
+    }
+  }
+
+  _cylinderBetween(name, start, end, radius, material, options = {}) {
+    const direction = end.clone().sub(start);
+    const length = direction.length();
+    if (length <= 0.001) return null;
+
+    const geometry = new THREE.CylinderGeometry(radius, radius, length, options.segments ?? 10);
+    if (geometry.attributes.uv && !geometry.attributes.uv2) {
+      geometry.setAttribute('uv2', geometry.attributes.uv.clone());
+    }
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = name;
+    mesh.position.copy(start).add(end).multiplyScalar(0.5);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+    mesh.castShadow = options.castShadow ?? true;
+    mesh.receiveShadow = options.receiveShadow ?? true;
+    this.group.add(mesh);
     return mesh;
   }
 
@@ -216,7 +267,7 @@ export class Room {
         new THREE.Vector3(0.62, height, 0.62),
         new THREE.Vector3(x, height / 2, z),
         this.materials.blackSteel,
-        { receiveDecals: true, collider: true, occluder: true }
+        { receiveDecals: true, collider: true, occluder: true, edgeTrim: { material: this.materials.steel, thickness: 0.045 } }
       );
       this._box(
         'amber impact collar',
@@ -237,7 +288,7 @@ export class Room {
         new THREE.Vector3(sx, topThickness, sz),
         new THREE.Vector3(x, deskY, z),
         this.materials.desk,
-        { receiveDecals: true, collider: true, occluder: true }
+        { receiveDecals: true, collider: true, occluder: true, edgeTrim: { material: this.materials.steel, thickness: 0.052 } }
       );
       for (const lx of [-sx / 2 + 0.24, sx / 2 - 0.24]) {
         for (const lz of [-sz / 2 + 0.24, sz / 2 - 0.24]) {
@@ -310,7 +361,7 @@ export class Room {
         new THREE.Vector3(1.05, 2.45, 0.9),
         new THREE.Vector3(12.35, 1.225, z),
         rackMat,
-        { receiveDecals: true, collider: true, occluder: true }
+        { receiveDecals: true, collider: true, occluder: true, edgeTrim: { material: ventMat, thickness: 0.04 } }
       );
       this._box(
         'server rack removable panel',
@@ -347,7 +398,7 @@ export class Room {
         new THREE.Vector3(sx, sy, sz),
         new THREE.Vector3(x, y, z),
         this.materials.crate,
-        { receiveDecals: true, collider: true, occluder: true }
+        { receiveDecals: true, collider: true, occluder: true, edgeTrim: { material: this.materials.steel, thickness: 0.045 } }
       );
       this._box(
         'crate oxidized steel latch',
@@ -376,7 +427,7 @@ export class Room {
       new THREE.Vector3(2.72, 2.34, 0.16),
       new THREE.Vector3(0, 1.17, frameZ + 0.1),
       doorMat,
-      { receiveDecals: true, collider: true, occluder: true }
+      { receiveDecals: true, collider: true, occluder: true, edgeTrim: { material: this.materials.steel, thickness: 0.05 } }
     );
     this._box(
       'left heavy door jamb',
@@ -472,6 +523,191 @@ export class Room {
         cableMat,
         { castShadow: false }
       );
+    }
+  }
+
+  _buildCableRuns(width, depth, height) {
+    const cableMat = this.materials.blackSteel;
+    const conduitMat = this.materials.steel;
+    const rearZ = -depth / 2 + 0.18;
+    const rightX = width / 2 - 0.2;
+
+    this._cylinderBetween(
+      'thick rear wall cable conduit',
+      new THREE.Vector3(-width / 2 + 2.1, 2.86, rearZ),
+      new THREE.Vector3(width / 2 - 4.0, 2.86, rearZ),
+      0.032,
+      conduitMat,
+      { segments: 12, castShadow: false }
+    );
+    this._cylinderBetween(
+      'server corner cable drop',
+      new THREE.Vector3(10.6, height - 0.22, rearZ),
+      new THREE.Vector3(10.6, 0.54, rearZ),
+      0.026,
+      cableMat,
+      { segments: 10, castShadow: false }
+    );
+    this._cylinderBetween(
+      'right wall extraction conduit',
+      new THREE.Vector3(rightX, 2.62, 3.2),
+      new THREE.Vector3(rightX, 2.62, 8.7),
+      0.028,
+      conduitMat,
+      { segments: 12, castShadow: false }
+    );
+    this._cylinderBetween(
+      'right wall extraction cable drop',
+      new THREE.Vector3(rightX, 2.62, 8.7),
+      new THREE.Vector3(rightX, 0.76, 8.7),
+      0.022,
+      cableMat,
+      { segments: 10, castShadow: false }
+    );
+
+    const floorCable = [
+      new THREE.Vector3(7.9, 0.055, 3.65),
+      new THREE.Vector3(9.35, 0.06, 4.3),
+      new THREE.Vector3(10.25, 0.052, 5.75),
+      new THREE.Vector3(11.55, 0.058, 6.6),
+      new THREE.Vector3(12.25, 0.055, 8.15),
+    ];
+    for (let i = 0; i < floorCable.length - 1; i++) {
+      this._cylinderBetween('loose floor cable snake', floorCable[i], floorCable[i + 1], 0.021, cableMat, {
+        segments: 8,
+        castShadow: true,
+      });
+    }
+  }
+
+  _buildAsymmetricClutter() {
+    this._box(
+      'fallen inspection panel',
+      new THREE.Vector3(1.25, 0.055, 0.72),
+      new THREE.Vector3(5.85, 0.08, -7.75),
+      this.materials.steel,
+      { rotation: new THREE.Vector3(0.03, -0.42, 0.08), receiveDecals: true, edgeTrim: { material: this.materials.blackSteel, thickness: 0.035 } }
+    );
+    this._box(
+      'forgotten black tool case',
+      new THREE.Vector3(0.8, 0.32, 0.46),
+      new THREE.Vector3(6.82, 0.16, -7.35),
+      this.materials.blackSteel,
+      { rotation: new THREE.Vector3(0, 0.28, 0), edgeTrim: { material: this.materials.steel, thickness: 0.032 } }
+    );
+    this._box(
+      'skewed rolling chair seat',
+      new THREE.Vector3(0.68, 0.12, 0.62),
+      new THREE.Vector3(-0.75, 0.48, 2.15),
+      this.materials.desk,
+      { rotation: new THREE.Vector3(0.2, 0.75, -0.1), receiveDecals: true }
+    );
+    this._cylinderBetween(
+      'fallen chair center post',
+      new THREE.Vector3(-0.58, 0.16, 2.2),
+      new THREE.Vector3(-0.92, 0.72, 2.1),
+      0.035,
+      this.materials.blackSteel,
+      { segments: 10 }
+    );
+    for (const [x, z, yaw] of [
+      [-1.18, 2.48, 0.4],
+      [-0.4, 1.78, -0.2],
+      [0.04, 2.42, 1.1],
+    ]) {
+      this._box(
+        'scattered paper work order',
+        new THREE.Vector3(0.42, 0.012, 0.3),
+        new THREE.Vector3(x, 0.035, z),
+        this.materials.ceiling,
+        { rotation: new THREE.Vector3(0, yaw, 0), castShadow: false }
+      );
+    }
+
+    const bucket = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.22, 0.58, 14, 1, true), this.materials.blackSteel);
+    if (bucket.geometry.attributes.uv && !bucket.geometry.attributes.uv2) {
+      bucket.geometry.setAttribute('uv2', bucket.geometry.attributes.uv.clone());
+    }
+    bucket.name = 'knocked over dirty mop bucket';
+    bucket.position.set(-10.7, 0.31, -2.8);
+    bucket.rotation.set(0.24, 0, -0.38);
+    bucket.castShadow = true;
+    bucket.receiveShadow = true;
+    this.group.add(bucket);
+  }
+
+  _buildExtractMarker() {
+    const extractGlow = emissiveTrim({
+      name: 'dirty green extract objective glow',
+      color: 0x8fcf9a,
+      intensity: 0.78,
+      roughness: 0.44,
+      metalness: 0.18,
+    });
+    const x = 12.5;
+    const z = 8.5;
+
+    this._box(
+      'extract zone black steel left upright',
+      new THREE.Vector3(0.16, 2.35, 0.18),
+      new THREE.Vector3(x - 0.92, 1.175, z + 0.22),
+      this.materials.blackSteel,
+      { edgeTrim: { material: this.materials.steel, thickness: 0.035 } }
+    );
+    this._box(
+      'extract zone black steel right upright',
+      new THREE.Vector3(0.16, 2.35, 0.18),
+      new THREE.Vector3(x + 0.92, 1.175, z + 0.22),
+      this.materials.blackSteel,
+      { edgeTrim: { material: this.materials.steel, thickness: 0.035 } }
+    );
+    this._box(
+      'extract zone black steel header',
+      new THREE.Vector3(2.0, 0.16, 0.18),
+      new THREE.Vector3(x, 2.38, z + 0.22),
+      this.materials.blackSteel,
+      { edgeTrim: { material: this.materials.steel, thickness: 0.035 } }
+    );
+
+    this._box(
+      'glowing extract left doorframe strip',
+      new THREE.Vector3(0.045, 2.05, 0.04),
+      new THREE.Vector3(x - 0.72, 1.12, z + 0.08),
+      extractGlow,
+      { castShadow: false, receiveShadow: false }
+    );
+    this._box(
+      'glowing extract right doorframe strip',
+      new THREE.Vector3(0.045, 2.05, 0.04),
+      new THREE.Vector3(x + 0.72, 1.12, z + 0.08),
+      extractGlow,
+      { castShadow: false, receiveShadow: false }
+    );
+    this._box(
+      'glowing extract top doorframe strip',
+      new THREE.Vector3(1.48, 0.045, 0.04),
+      new THREE.Vector3(x, 2.16, z + 0.08),
+      extractGlow,
+      { castShadow: false, receiveShadow: false }
+    );
+    this._box(
+      'extract threshold sodium strip',
+      new THREE.Vector3(1.75, 0.035, 0.065),
+      new THREE.Vector3(x, 0.045, z - 0.62),
+      this.materials.amber,
+      { castShadow: false, receiveShadow: false }
+    );
+
+    for (let row = 0; row < 3; row++) {
+      for (const side of [-1, 1]) {
+        this._box(
+          'extract floor chevron marker',
+          new THREE.Vector3(0.56, 0.026, 0.055),
+          new THREE.Vector3(x + side * 0.18, 0.045, z - 0.95 - row * 0.32),
+          extractGlow,
+          { rotation: new THREE.Vector3(0, side * 0.62, 0), castShadow: false, receiveShadow: false }
+        );
+      }
     }
   }
 }

@@ -24,19 +24,77 @@ function fbm(x, y, seed) {
   return value;
 }
 
+function ridge(value) {
+  return 1 - Math.abs(value * 2 - 1);
+}
+
+function smoothstep(edge0, edge1, x) {
+  const t = THREE.MathUtils.clamp((x - edge0) / (edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
 function makeTexture({
   key,
   size = 128,
   color = 0x20242a,
   variation = 0.18,
   roughness = false,
+  kind = roughness ? 'roughness' : 'albedo',
   repeat = [4, 4],
   seed = 1,
 } = {}) {
-  const cacheKey = JSON.stringify({ key, size, color, variation, roughness, repeat, seed });
+  const cacheKey = JSON.stringify({ key, size, color, variation, roughness, kind, repeat, seed });
   if (textureCache.has(cacheKey)) return textureCache.get(cacheKey);
 
   const base = new THREE.Color(color);
+  const greenBlack = new THREE.Color(0x0e1712);
+  const wear = new THREE.Color(0x8a8f86);
+  const writePixel = (data, i, x, y) => {
+    const fine = hash2(x, y, seed) - 0.5;
+    const cloud = fbm(x / 18, y / 18, seed) - 0.5;
+    const stain = fbm(x / 44 + seed * 0.03, y / 29 - seed * 0.05, seed + 71) - 0.5;
+    const verticalRun = Math.pow(ridge(hash2(Math.floor(x / 9), seed, seed + 19)), 4) *
+      Math.max(0, 1 - y / size);
+    const scratch =
+      (hash2(Math.floor(x / 2), Math.floor((y + seed * 29) / 34), seed) > 0.88 ? 1 : 0) *
+      (hash2(x, y, seed + 9) - 0.25);
+    const edgeWear = Math.max(
+      smoothstep(0.085, 0.0, x / size),
+      smoothstep(0.085, 0.0, y / size),
+      smoothstep(0.085, 0.0, 1 - x / size),
+      smoothstep(0.085, 0.0, 1 - y / size)
+    );
+    const grime = Math.max(0, stain * 1.9 + verticalRun * 0.55);
+    const n = fine * 0.5 + cloud * 0.9 + scratch * 0.72 - grime * 0.42 + edgeWear * 0.28;
+
+    if (kind === 'roughness') {
+      const v = Math.round(THREE.MathUtils.clamp(188 + cloud * 86 + grime * 52 - edgeWear * 38, 82, 252));
+      data[i] = v;
+      data[i + 1] = v;
+      data[i + 2] = v;
+    } else if (kind === 'bump') {
+      const gouge = scratch * 0.9 - grime * 0.45 + ridge(fbm(x / 9, y / 9, seed + 121)) * 0.35;
+      const v = Math.round(THREE.MathUtils.clamp(126 + gouge * 88 + fine * 30, 44, 218));
+      data[i] = v;
+      data[i + 1] = v;
+      data[i + 2] = v;
+    } else if (kind === 'ao') {
+      const v = Math.round(THREE.MathUtils.clamp(224 - grime * 82 - verticalRun * 36 - edgeWear * 42, 118, 248));
+      data[i] = v;
+      data[i + 1] = v;
+      data[i + 2] = v;
+    } else {
+      const mul = 1 + n * variation;
+      const r = THREE.MathUtils.lerp(base.r * mul, greenBlack.r, THREE.MathUtils.clamp(grime * 0.36, 0, 0.5));
+      const g = THREE.MathUtils.lerp(base.g * mul, greenBlack.g, THREE.MathUtils.clamp(grime * 0.3, 0, 0.45));
+      const b = THREE.MathUtils.lerp(base.b * mul, greenBlack.b, THREE.MathUtils.clamp(grime * 0.4, 0, 0.52));
+      const wearAmount = THREE.MathUtils.clamp(edgeWear * 0.2 + scratch * 0.14, 0, 0.28);
+      data[i] = Math.round(THREE.MathUtils.clamp(THREE.MathUtils.lerp(r, wear.r, wearAmount) * 255, 0, 255));
+      data[i + 1] = Math.round(THREE.MathUtils.clamp(THREE.MathUtils.lerp(g, wear.g, wearAmount) * 255, 0, 255));
+      data[i + 2] = Math.round(THREE.MathUtils.clamp(THREE.MathUtils.lerp(b, wear.b, wearAmount) * 255, 0, 255));
+    }
+    data[i + 3] = 255;
+  };
   let texture;
 
   if (typeof document !== 'undefined') {
@@ -49,25 +107,7 @@ function makeTexture({
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const i = (y * size + x) * 4;
-        const fine = hash2(x, y, seed) - 0.5;
-        const cloud = fbm(x / 18, y / 18, seed) - 0.5;
-        const scratch =
-          (hash2(Math.floor(x / 2), Math.floor((y + seed * 29) / 34), seed) > 0.91 ? 1 : 0) *
-          (hash2(x, y, seed + 9) - 0.35);
-        const n = fine * 0.55 + cloud * 0.75 + scratch * 0.55;
-
-        if (roughness) {
-          const v = Math.round(THREE.MathUtils.clamp(178 + n * 92, 72, 250));
-          img.data[i] = v;
-          img.data[i + 1] = v;
-          img.data[i + 2] = v;
-        } else {
-          const mul = 1 + n * variation;
-          img.data[i] = Math.round(THREE.MathUtils.clamp(base.r * 255 * mul, 0, 255));
-          img.data[i + 1] = Math.round(THREE.MathUtils.clamp(base.g * 255 * mul, 0, 255));
-          img.data[i + 2] = Math.round(THREE.MathUtils.clamp(base.b * 255 * mul, 0, 255));
-        }
-        img.data[i + 3] = 255;
+        writePixel(img.data, i, x, y);
       }
     }
 
@@ -78,18 +118,7 @@ function makeTexture({
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const i = (y * size + x) * 4;
-        const n = (hash2(x, y, seed) - 0.5) * variation;
-        if (roughness) {
-          const v = Math.round(THREE.MathUtils.clamp(178 + n * 255, 72, 250));
-          data[i] = v;
-          data[i + 1] = v;
-          data[i + 2] = v;
-        } else {
-          data[i] = Math.round(THREE.MathUtils.clamp(base.r * 255 * (1 + n), 0, 255));
-          data[i + 1] = Math.round(THREE.MathUtils.clamp(base.g * 255 * (1 + n), 0, 255));
-          data[i + 2] = Math.round(THREE.MathUtils.clamp(base.b * 255 * (1 + n), 0, 255));
-        }
-        data[i + 3] = 255;
+        writePixel(data, i, x, y);
       }
     }
     texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
@@ -97,7 +126,7 @@ function makeTexture({
   }
 
   texture.name = key;
-  texture.colorSpace = roughness ? linear : srgb;
+  texture.colorSpace = kind === 'albedo' ? srgb : linear;
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(repeat[0], repeat[1]);
@@ -121,10 +150,24 @@ export function concrete(options = {}) {
     }),
     roughnessMap: makeTexture({
       key: `${options.name ?? 'concrete'}-roughness`,
-      roughness: true,
+      kind: 'roughness',
       repeat: options.repeat ?? [7, 6],
       seed: (options.seed ?? 3) + 41,
     }),
+    bumpMap: makeTexture({
+      key: `${options.name ?? 'concrete'}-bump`,
+      kind: 'bump',
+      repeat: options.repeat ?? [7, 6],
+      seed: (options.seed ?? 3) + 83,
+    }),
+    bumpScale: options.bumpScale ?? 0.045,
+    aoMap: makeTexture({
+      key: `${options.name ?? 'concrete'}-ao`,
+      kind: 'ao',
+      repeat: options.repeat ?? [7, 6],
+      seed: (options.seed ?? 3) + 127,
+    }),
+    aoMapIntensity: options.aoMapIntensity ?? 0.42,
     metalness: options.metalness ?? 0.035,
     roughness: options.roughness ?? 0.88,
     envMapIntensity: options.envMapIntensity ?? 0.16,
@@ -145,10 +188,24 @@ export function metal(options = {}) {
     }),
     roughnessMap: makeTexture({
       key: `${options.name ?? 'metal'}-roughness`,
-      roughness: true,
+      kind: 'roughness',
       repeat: options.repeat ?? [3, 3],
       seed: (options.seed ?? 9) + 17,
     }),
+    bumpMap: makeTexture({
+      key: `${options.name ?? 'metal'}-bump`,
+      kind: 'bump',
+      repeat: options.repeat ?? [3, 3],
+      seed: (options.seed ?? 9) + 53,
+    }),
+    bumpScale: options.bumpScale ?? 0.018,
+    aoMap: makeTexture({
+      key: `${options.name ?? 'metal'}-ao`,
+      kind: 'ao',
+      repeat: options.repeat ?? [3, 3],
+      seed: (options.seed ?? 9) + 89,
+    }),
+    aoMapIntensity: options.aoMapIntensity ?? 0.32,
     metalness: options.metalness ?? 0.78,
     roughness: options.roughness ?? 0.53,
     envMapIntensity: options.envMapIntensity ?? 0.46,
@@ -169,10 +226,24 @@ export function paintedMetal(options = {}) {
     }),
     roughnessMap: makeTexture({
       key: `${options.name ?? 'painted-metal'}-roughness`,
-      roughness: true,
+      kind: 'roughness',
       repeat: options.repeat ?? [4, 3],
       seed: (options.seed ?? 14) + 23,
     }),
+    bumpMap: makeTexture({
+      key: `${options.name ?? 'painted-metal'}-bump`,
+      kind: 'bump',
+      repeat: options.repeat ?? [4, 3],
+      seed: (options.seed ?? 14) + 61,
+    }),
+    bumpScale: options.bumpScale ?? 0.026,
+    aoMap: makeTexture({
+      key: `${options.name ?? 'painted-metal'}-ao`,
+      kind: 'ao',
+      repeat: options.repeat ?? [4, 3],
+      seed: (options.seed ?? 14) + 97,
+    }),
+    aoMapIntensity: options.aoMapIntensity ?? 0.36,
     metalness: options.metalness ?? 0.38,
     roughness: options.roughness ?? 0.68,
     envMapIntensity: options.envMapIntensity ?? 0.28,

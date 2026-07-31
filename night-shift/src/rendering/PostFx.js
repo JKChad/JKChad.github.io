@@ -36,33 +36,38 @@ export class PostFx {
     this.composer.addPass(this.renderPass);
 
     this.bloom = new BloomEffect({
-      intensity: 0.36,
-      luminanceThreshold: 0.82,
-      luminanceSmoothing: 0.18,
+      intensity: 0.28,
+      luminanceThreshold: 0.9,
+      luminanceSmoothing: 0.13,
       mipmapBlur: true,
-      radius: 0.46,
-      levels: 5,
+      radius: 0.42,
+      levels: 4,
     });
 
-    this.smaa = new SMAAEffect({ preset: SMAAPreset?.HIGH });
+    this.smaa = new SMAAEffect({ preset: SMAAPreset?.MEDIUM });
     this.vignette = new VignetteEffect({
       technique: VignetteTechnique?.ESKIL,
       offset: 0.32,
-      darkness: 0.54,
+      darkness: 0.5,
     });
     this.grain = new FilmGrainEffect({
-      intensity: 0.026,
-      contrast: 1.045,
+      intensity: 0.018,
+      contrast: 1.025,
     });
 
-    const effects = [];
     this.ssr = this._tryCreateSSR();
-    if (this.ssr) effects.push(this.ssr);
-    effects.push(this.bloom, this.smaa, this.vignette, this.grain);
+    if (this.ssr) {
+      this.ssrPass = new EffectPass(camera, this.ssr);
+      this.composer.addPass(this.ssrPass);
+    }
 
-    this.effectPass = new EffectPass(camera, ...effects);
-    this.effectPass.dithering = true;
-    this.composer.addPass(this.effectPass);
+    this.bloomPass = new EffectPass(camera, this.bloom);
+    this.smaaPass = new EffectPass(camera, this.smaa);
+    this.lookPass = new EffectPass(camera, this.vignette, this.grain);
+    this.lookPass.dithering = true;
+    this.composer.addPass(this.bloomPass);
+    this.composer.addPass(this.smaaPass);
+    this.composer.addPass(this.lookPass);
 
     if (!this.ssr) this._installReflectionFallback();
 
@@ -120,27 +125,37 @@ export class PostFx {
     this.composer.setSize(width, height);
   }
 
-  update(dt, { mode = 'stealth', visibility = 1 } = {}) {
+  applyBudget(snapshot = {}) {
+    const bloomEnabled = snapshot.bloomEnabled !== false;
+    const smaaEnabled = snapshot.smaaEnabled !== false;
+
+    if (this.bloomPass) this.bloomPass.enabled = bloomEnabled;
+    if (this.smaaPass) this.smaaPass.enabled = smaaEnabled;
+    if (this.ssrPass) this.ssrPass.enabled = snapshot.pixelRatio === undefined || snapshot.pixelRatio >= 0.82;
+  }
+
+  update(dt, { mode = 'stealth', visibility = 1, budget = null } = {}) {
     this._lastDt = dt;
+    if (budget) this.applyBudget(budget);
 
     const ghost = THREE.MathUtils.clamp(1 - visibility, 0, 1);
     const loud = mode === 'loud' ? 1 : 0;
 
-    const targetBloom = 0.36 + loud * 0.2 + ghost * 0.04;
-    const targetDarkness = 0.54 + loud * 0.1 - ghost * 0.045;
-    const targetGrain = 0.026 + loud * 0.006 + ghost * 0.006;
-    const targetContrast = 1.045 + loud * 0.025 - ghost * 0.015;
+    const targetBloom = 0.28 + loud * 0.12 + ghost * 0.025;
+    const targetDarkness = 0.5 + loud * 0.085 - ghost * 0.035;
+    const targetGrain = 0.018 + loud * 0.004 + ghost * 0.004;
+    const targetContrast = 1.025 + loud * 0.018 - ghost * 0.01;
 
     this.bloom.intensity = damp(this.bloom.intensity, targetBloom, 5.5, dt);
     this.vignette.darkness = damp(this.vignette.darkness, targetDarkness, 4.8, dt);
     this.vignette.offset = damp(this.vignette.offset, loud ? 0.27 : 0.32, 3.6, dt);
     this.grain.intensity = damp(this.grain.intensity, targetGrain, 4.0, dt);
-    this.grain.tealLift = damp(this.grain.tealLift, ghost * 0.72, 3.5, dt);
-    this.grain.redPush = damp(this.grain.redPush, loud * 0.8, 4.8, dt);
+    this.grain.tealLift = damp(this.grain.tealLift, ghost * 0.36, 3.5, dt);
+    this.grain.redPush = damp(this.grain.redPush, loud * 0.42, 4.8, dt);
     this.grain.contrast = damp(this.grain.contrast, targetContrast, 4.0, dt);
 
     if (this.renderer.toneMappingExposure !== undefined) {
-      const targetExposure = 1.03 + loud * 0.05 - ghost * 0.025;
+      const targetExposure = 1.0 + loud * 0.045 - ghost * 0.025;
       this.renderer.toneMappingExposure = damp(this.renderer.toneMappingExposure, targetExposure, 3.2, dt);
     }
   }

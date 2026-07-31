@@ -4,6 +4,143 @@ import { CONFIG } from '../config.js';
 const _tmpA = new THREE.Vector3();
 const _tmpB = new THREE.Vector3();
 const _tmpC = new THREE.Vector3();
+const _tmpD = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
+
+function smoothstep(edge0, edge1, x) {
+  const t = THREE.MathUtils.clamp((x - edge0) / (edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+const poolVertexShader = /* glsl */ `
+varying vec3 vLocal;
+varying vec3 vWorld;
+
+void main() {
+  vLocal = position;
+  vec4 world = modelMatrix * vec4(position, 1.0);
+  vWorld = world.xyz;
+  gl_Position = projectionMatrix * viewMatrix * world;
+}
+`;
+
+const conePoolFragmentShader = /* glsl */ `
+uniform vec3 color;
+uniform float opacity;
+uniform float radius;
+uniform float height;
+uniform float time;
+uniform float seed;
+varying vec3 vLocal;
+varying vec3 vWorld;
+
+float hash(vec2 p) {
+  p = fract(p * vec2(127.1, 311.7));
+  p += dot(p, p + 34.73 + seed);
+  return fract(p.x * p.y);
+}
+
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash(i);
+  float b = hash(i + vec2(1.0, 0.0));
+  float c = hash(i + vec2(0.0, 1.0));
+  float d = hash(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+void main() {
+  float h = max(height, 0.001);
+  float t = clamp(vLocal.y / h + 0.5, 0.0, 1.0);
+  float coneRadius = max(radius * (1.0 - t), 0.025);
+  float radial = length(vLocal.xz) / coneRadius;
+  float radialFalloff = pow(1.0 - smoothstep(0.12, 1.0, radial), 1.35);
+  float verticalFalloff = smoothstep(0.015, 0.2, t) * (1.0 - smoothstep(0.9, 1.0, t));
+  float breakup = noise(vWorld.xz * 0.92 + vec2(seed, -seed) + time * 0.015);
+  breakup = mix(breakup, noise(vWorld.xy * 1.35 + seed * 2.7), 0.38);
+  float smoke = smoothstep(0.08, 0.92, breakup + radial * 0.08);
+  float alpha = opacity * radialFalloff * verticalFalloff * mix(0.48, 1.06, smoke);
+  if (alpha < 0.003) discard;
+  gl_FragColor = vec4(color, alpha);
+}
+`;
+
+const diskPoolFragmentShader = /* glsl */ `
+uniform vec3 color;
+uniform float opacity;
+uniform float radius;
+uniform float time;
+uniform float seed;
+varying vec3 vLocal;
+varying vec3 vWorld;
+
+float hash(vec2 p) {
+  p = fract(p * vec2(269.5, 183.3));
+  p += dot(p, p + 41.19 + seed);
+  return fract(p.x * p.y);
+}
+
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash(i);
+  float b = hash(i + vec2(1.0, 0.0));
+  float c = hash(i + vec2(0.0, 1.0));
+  float d = hash(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+void main() {
+  float radial = length(vLocal.xy) / max(radius, 0.001);
+  float falloff = 1.0 - smoothstep(0.14, 1.0, radial);
+  float centerCut = 0.72 + smoothstep(0.0, 0.35, radial) * 0.28;
+  float breakup = noise(vWorld.xz * 1.7 + seed + time * 0.01);
+  float alpha = opacity * falloff * centerCut * mix(0.62, 1.08, breakup);
+  if (alpha < 0.003) discard;
+  gl_FragColor = vec4(color, alpha);
+}
+`;
+
+const hazePlaneFragmentShader = /* glsl */ `
+uniform vec3 color;
+uniform float opacity;
+uniform float width;
+uniform float height;
+uniform float time;
+uniform float seed;
+varying vec3 vLocal;
+varying vec3 vWorld;
+
+float hash(vec2 p) {
+  p = fract(p * vec2(113.5, 271.9));
+  p += dot(p, p + 37.21 + seed);
+  return fract(p.x * p.y);
+}
+
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash(i);
+  float b = hash(i + vec2(1.0, 0.0));
+  float c = hash(i + vec2(0.0, 1.0));
+  float d = hash(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+void main() {
+  vec2 normalized = vec2(vLocal.x / max(width * 0.5, 0.001), vLocal.y / max(height * 0.5, 0.001));
+  float radial = length(normalized);
+  float falloff = 1.0 - smoothstep(0.16, 1.0, radial);
+  float breakup = noise(vWorld.zy * 1.25 + vec2(seed, time * 0.018));
+  float alpha = opacity * falloff * mix(0.48, 1.0, breakup);
+  if (alpha < 0.003) discard;
+  gl_FragColor = vec4(color, alpha);
+}
+`;
 
 export class LightSystem {
   constructor(scene, bus, room) {
@@ -27,14 +164,43 @@ export class LightSystem {
     this._buildServerGlow();
   }
 
-  _material(color, opacity) {
-    return new THREE.MeshBasicMaterial({
-      color,
+  _shaderMaterial(fragmentShader, color, opacity, extraUniforms = {}) {
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        color: { value: new THREE.Color(color) },
+        opacity: { value: opacity },
+        time: { value: 0 },
+        seed: { value: Math.random() * 1000 },
+        ...extraUniforms,
+      },
+      vertexShader: poolVertexShader,
+      fragmentShader,
       transparent: true,
-      opacity,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
+    });
+    material.userData.baseOpacity = opacity;
+    return material;
+  }
+
+  _conePoolMaterial(color, opacity, radius, height) {
+    return this._shaderMaterial(conePoolFragmentShader, color, opacity, {
+      radius: { value: radius },
+      height: { value: height },
+    });
+  }
+
+  _diskPoolMaterial(color, opacity, radius) {
+    return this._shaderMaterial(diskPoolFragmentShader, color, opacity, {
+      radius: { value: radius },
+    });
+  }
+
+  _hazePlaneMaterial(color, opacity, width, height) {
+    return this._shaderMaterial(hazePlaneFragmentShader, color, opacity, {
+      width: { value: width },
+      height: { value: height },
     });
   }
 
@@ -55,7 +221,7 @@ export class LightSystem {
         id: 'north-west-ceiling',
         position: new THREE.Vector3(-7.9, h - 0.18, -6.3),
         target: new THREE.Vector3(-6.7, 0.04, -4.9),
-        color: 0xaec5d5,
+        color: 0x9fb8c5,
         sample: 0.58,
         lightIntensity: 15.5,
         range: 8.5,
@@ -67,7 +233,7 @@ export class LightSystem {
         id: 'north-east-ceiling',
         position: new THREE.Vector3(6.5, h - 0.18, -6.1),
         target: new THREE.Vector3(5.6, 0.04, -4.6),
-        color: 0xa9c2d6,
+        color: 0x96b2c1,
         sample: 0.54,
         lightIntensity: 14.25,
         range: 8.2,
@@ -79,7 +245,7 @@ export class LightSystem {
         id: 'center-security-ceiling',
         position: new THREE.Vector3(-1.1, h - 0.2, -0.35),
         target: new THREE.Vector3(-1.9, 0.04, -0.1),
-        color: 0xc4c1b2,
+        color: 0xd69a46,
         sample: 0.72,
         lightIntensity: 18.5,
         range: 9.4,
@@ -91,7 +257,7 @@ export class LightSystem {
         id: 'server-aisle-ceiling',
         position: new THREE.Vector3(7.8, h - 0.18, 2.9),
         target: new THREE.Vector3(6.4, 0.04, 3.2),
-        color: 0x9dbbd0,
+        color: 0x8eaebd,
         sample: 0.48,
         lightIntensity: 12.5,
         range: 7.4,
@@ -172,6 +338,9 @@ export class LightSystem {
     this.list.push({
       id,
       position: position.clone(),
+      target: target.clone(),
+      direction: target.clone().sub(position).normalize(),
+      angle: light.angle,
       intensity: sample,
       range,
       alive: true,
@@ -181,7 +350,7 @@ export class LightSystem {
       damaged,
       _baseLightIntensity: lightIntensity,
       _baseEmissiveIntensity: 1.4,
-      _basePoolOpacity: 0.082,
+      _basePoolOpacity: 0.072,
       _phase: Math.random() * Math.PI * 2,
       _poolMaterials: pool.userData.materials,
     });
@@ -189,16 +358,24 @@ export class LightSystem {
 
   _createCeilingPool(id, position, target, color, radius) {
     const group = new THREE.Group();
-    group.name = `${id} translucent light pool`;
+    group.name = `${id} shader volumetric light pool`;
 
-    const height = Math.max(0.1, position.y - 0.16);
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(radius, height, 40, 1, true), this._material(color, 0.082));
+    const height = Math.max(0.1, position.distanceTo(target));
+    const cone = new THREE.Mesh(
+      new THREE.ConeGeometry(radius, height, 48, 1, true),
+      this._conePoolMaterial(color, 0.072, radius, height)
+    );
     cone.name = `${id} volumetric cone`;
-    cone.position.set(position.x, position.y - height / 2, position.z);
+    cone.position.copy(position).add(target).multiplyScalar(0.5);
+    cone.quaternion.setFromUnitVectors(_up, _tmpD.copy(position).sub(target).normalize());
     cone.renderOrder = -1;
 
-    const disk = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.92, 48), this._material(color, 0.115));
-    disk.name = `${id} floor light contact pool`;
+    const diskRadius = radius * 0.94;
+    const disk = new THREE.Mesh(
+      new THREE.CircleGeometry(diskRadius, 64),
+      this._diskPoolMaterial(color, 0.105, diskRadius)
+    );
+    disk.name = `${id} shader floor light contact pool`;
     disk.position.copy(target);
     disk.position.y = 0.018;
     disk.rotation.x = -Math.PI / 2;
@@ -253,7 +430,7 @@ export class LightSystem {
 
     const pool = new THREE.Group();
     pool.name = 'warm desk lamp pool';
-    const disk = new THREE.Mesh(new THREE.CircleGeometry(1.55, 32), this._material(color, 0.13));
+    const disk = new THREE.Mesh(new THREE.CircleGeometry(1.55, 48), this._diskPoolMaterial(color, 0.105, 1.55));
     disk.position.set(-3.1, 0.025, -0.42);
     disk.rotation.x = -Math.PI / 2;
     pool.add(disk);
@@ -272,7 +449,7 @@ export class LightSystem {
       damaged: false,
       _baseLightIntensity: light.intensity,
       _baseEmissiveIntensity: 1.2,
-      _basePoolOpacity: 0.13,
+      _basePoolOpacity: 0.105,
       _phase: Math.random() * Math.PI * 2,
       _poolMaterials: pool.userData.materials,
     });
@@ -280,13 +457,13 @@ export class LightSystem {
 
   _buildServerGlow() {
     const id = 'cool-server-rack-glow';
-    const color = 0x36d6d0;
+    const color = 0x6bb6a2;
     const panelMat = new THREE.MeshStandardMaterial({
-      color: 0x123234,
+      color: 0x102b25,
       emissive: new THREE.Color(color),
-      emissiveIntensity: 0.72,
+      emissiveIntensity: 0.62,
       metalness: 0.25,
-      roughness: 0.36,
+      roughness: 0.42,
     });
     const panels = [];
 
@@ -300,19 +477,36 @@ export class LightSystem {
       panels.push(panel);
     }
 
-    const light = new THREE.PointLight(color, 4.4, 6.2, 2);
+    const light = new THREE.PointLight(color, 3.8, 6.2, 2);
     light.name = 'cool server rack spill light';
     light.position.set(10.8, 1.45, -4.55);
     this.group.add(light);
 
     const pool = new THREE.Group();
-    pool.name = 'cool server rack rectangular glow volume';
-    const mat = this._material(color, 0.075);
-    const haze = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.5, 4.8), mat);
-    haze.position.set(10.8, 1.35, -4.55);
-    haze.renderOrder = -1;
-    pool.add(haze);
-    pool.userData.materials = [mat];
+    pool.name = 'cool server rack layered shader haze';
+    const materials = [];
+    const makeHaze = (name, width, height, position, rotationY, opacity) => {
+      const mat = this._hazePlaneMaterial(color, opacity, width, height);
+      const haze = new THREE.Mesh(new THREE.PlaneGeometry(width, height, 1, 1), mat);
+      haze.name = name;
+      haze.position.copy(position);
+      haze.rotation.y = rotationY;
+      haze.renderOrder = -1;
+      pool.add(haze);
+      materials.push(mat);
+    };
+
+    makeHaze('server rack vertical haze sheet', 4.9, 2.25, new THREE.Vector3(10.86, 1.35, -4.55), Math.PI / 2, 0.058);
+    makeHaze('server rack angled spill haze', 3.6, 1.8, new THREE.Vector3(10.35, 1.1, -4.45), Math.PI / 2.65, 0.044);
+    makeHaze('server rack low skim haze', 4.6, 0.85, new THREE.Vector3(10.55, 0.58, -4.55), Math.PI / 2, 0.038);
+
+    const disk = new THREE.Mesh(new THREE.CircleGeometry(2.85, 56), this._diskPoolMaterial(color, 0.052, 2.85));
+    disk.name = 'server rack floor spill';
+    disk.position.set(10.7, 0.024, -4.55);
+    disk.rotation.x = -Math.PI / 2;
+    pool.add(disk);
+    materials.push(disk.material);
+    pool.userData.materials = materials;
     this.group.add(pool);
 
     this.list.push({
@@ -327,8 +521,8 @@ export class LightSystem {
       bulbs: panels,
       damaged: false,
       _baseLightIntensity: light.intensity,
-      _baseEmissiveIntensity: 0.72,
-      _basePoolOpacity: 0.075,
+      _baseEmissiveIntensity: 0.62,
+      _basePoolOpacity: 0.058,
       _phase: Math.random() * Math.PI * 2,
       _poolMaterials: pool.userData.materials,
     });
@@ -340,20 +534,40 @@ export class LightSystem {
 
     let illumination = 0;
     for (const record of this.list) {
-      if (!record.alive) continue;
+      if (!record.alive || !record.light || record.light.intensity <= 0) continue;
 
       const toLight = _tmpB.copy(record.position).sub(origin);
       const dist = toLight.length();
       if (dist <= 0.001 || dist > record.range) continue;
 
+      const coneWeight = this._coneWeight(record, origin);
+      if (coneWeight <= 0.001) continue;
+
       const distanceFalloff = 1 - dist / record.range;
       const shaped = distanceFalloff * distanceFalloff * (3 - 2 * distanceFalloff);
       const occlusion = this._occluded(origin, toLight, dist) ? 0.16 : 1;
 
-      illumination += shaped * record.intensity * occlusion;
+      illumination += shaped * record.intensity * coneWeight * occlusion;
     }
 
     return THREE.MathUtils.clamp(illumination, 0, 1);
+  }
+
+  _coneWeight(record, origin) {
+    if (!record.direction && !record.target) return 1;
+
+    const direction = record.direction
+      ? _tmpC.copy(record.direction)
+      : _tmpC.copy(record.target).sub(record.position).normalize();
+    const toSample = _tmpD.copy(origin).sub(record.position);
+    if (toSample.lengthSq() <= 0.000001) return 1;
+    toSample.normalize();
+
+    const angle = record.angle ?? Math.PI / 3;
+    const outer = Math.cos(angle);
+    const inner = Math.cos(angle * 0.58);
+    const dot = THREE.MathUtils.clamp(toSample.dot(direction), -1, 1);
+    return smoothstep(outer, inner, dot);
   }
 
   _occluded(origin, toLight, distance) {
@@ -434,7 +648,11 @@ export class LightSystem {
       }
 
       for (const material of record._poolMaterials ?? []) {
-        material.opacity = record._basePoolOpacity * THREE.MathUtils.clamp(flicker, 0.35, 1.08);
+        const opacity = (material.userData?.baseOpacity ?? record._basePoolOpacity) *
+          THREE.MathUtils.clamp(flicker, 0.35, 1.08);
+        if (material.uniforms?.opacity) material.uniforms.opacity.value = opacity;
+        else material.opacity = opacity;
+        if (material.uniforms?.time) material.uniforms.time.value = this._time;
       }
     }
   }

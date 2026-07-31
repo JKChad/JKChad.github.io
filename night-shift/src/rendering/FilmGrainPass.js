@@ -15,22 +15,29 @@ float hash(vec2 p) {
   return fract(p.x * p.y);
 }
 
+float interleavedGradientNoise(vec2 p) {
+  return fract(52.9829189 * fract(0.06711056 * p.x + 0.00583715 * p.y));
+}
+
 void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
   vec3 color = inputColor.rgb;
   float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
   vec2 pixel = uv * max(resolution, vec2(1.0));
 
-  float grain = hash(pixel + time * 71.13) - 0.5;
+  float frame = floor(time * 10.0);
+  float staticGrain = interleavedGradientNoise(floor(pixel));
+  float slowGrain = hash(floor(pixel * 0.5) + vec2(frame * 17.0, frame * 29.0));
+  float grain = mix(staticGrain, slowGrain, 0.18) - 0.5;
   float shadowWeight = 1.0 - smoothstep(0.08, 0.78, luma);
-  color += grain * intensity * (0.58 + shadowWeight * 0.75);
+  color += grain * intensity * (0.48 + shadowWeight * 0.62);
 
   color = (color - 0.5) * contrast + 0.5;
 
-  vec3 teal = vec3(-0.014, 0.026, 0.035) * tealLift * (0.35 + shadowWeight);
-  color += teal;
+  vec3 coldLift = vec3(-0.01, 0.018, 0.022) * tealLift * (0.28 + shadowWeight * 0.72);
+  color += coldLift;
 
   float edge = smoothstep(0.36, 0.84, distance(uv, vec2(0.5)) * 1.42);
-  color += vec3(0.105, -0.026, -0.042) * redPush * edge;
+  color += vec3(0.06, 0.026, -0.018) * redPush * edge;
 
   outputColor = vec4(max(color, vec3(0.0)), inputColor.a);
 }
@@ -42,10 +49,10 @@ export class FilmGrainEffect extends Effect {
       blendFunction: BlendFunction.NORMAL,
       uniforms: new Map([
         ['time', new THREE.Uniform(0)],
-        ['intensity', new THREE.Uniform(options.intensity ?? 0.027)],
+        ['intensity', new THREE.Uniform(options.intensity ?? 0.018)],
         ['tealLift', new THREE.Uniform(options.tealLift ?? 0)],
         ['redPush', new THREE.Uniform(options.redPush ?? 0)],
-        ['contrast', new THREE.Uniform(options.contrast ?? 1.045)],
+        ['contrast', new THREE.Uniform(options.contrast ?? 1.025)],
         ['resolution', new THREE.Uniform(new THREE.Vector2(1, 1))],
       ]),
     });

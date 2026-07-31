@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NIGHT SHIFT</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #0a0c10;
+      --paper: #d8dde6;
+      --amber: #e8a84a;
+      --alert: #e0453a;
+      --ghost: #5ec8c0;
+      --dim: #6a7380;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--ink);
+      color: var(--paper);
+      font-family: 'IBM Plex Mono', monospace;
+      cursor: none;
+    }
+    #app, canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    #ui {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+    #boot {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 40%, #1a2230 0%, transparent 55%),
+        linear-gradient(180deg, #0a0c10 0%, #121820 50%, #0a0c10 100%);
+      pointer-events: auto;
+      cursor: default;
+    }
+    #boot.hidden { display: none; }
+    .boot-panel {
+      text-align: center;
+      max-width: 520px;
+      padding: 2rem;
+    }
+    .boot-brand {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(4rem, 12vw, 7rem);
+      letter-spacing: 0.08em;
+      line-height: 0.9;
+      color: var(--paper);
+      text-shadow: 0 0 40px rgba(232, 168, 74, 0.25);
+    }
+    .boot-tag {
+      margin-top: 0.75rem;
+      font-size: 0.75rem;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      color: var(--amber);
+    }
+    .boot-copy {
+      margin: 1.75rem auto 2rem;
+      max-width: 36ch;
+      font-size: 0.85rem;
+      line-height: 1.55;
+      color: var(--dim);
+    }
+    .boot-btn {
+      appearance: none;
+      border: 1px solid var(--amber);
+      background: transparent;
+      color: var(--amber);
+      font-family: inherit;
+      font-size: 0.8rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      padding: 0.9rem 1.8rem;
+      cursor: pointer;
+      transition: background 120ms ease, color 120ms ease;
+    }
+    .boot-btn:hover, .boot-btn:focus-visible {
+      background: var(--amber);
+      color: var(--ink);
+      outline: none;
+    }
+    .boot-keys {
+      margin-top: 1.5rem;
+      font-size: 0.7rem;
+      color: #4a5560;
+      line-height: 1.8;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="ui"></div>
+  <div id="boot">
+    <div class="boot-panel">
+      <div class="boot-brand">NIGHT SHIFT</div>
+      <div class="boot-tag">Shared Attention // Vertical Slice</div>
+      <p class="boot-copy">
+        Two contractors. One attention meter. Whoever holds it gets hunted —
+        whoever doesn't becomes a ghost. Trade the heat, steal the dark,
+        and extract at the far door.
+      </p>
+      <button class="boot-btn" id="start-btn" type="button">Accept Contract</button>
+      <div class="boot-keys">
+        WASD move · Mouse look · Shift walk · R reload · F distraction<br />
+        RMB ADS · LMB fire · Q melee · 1 hold attention · 2 release · far door extracts
+      </div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

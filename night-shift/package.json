@@ -1,0 +1,24 @@
+{
+  "name": "night-shift",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "smoke": "npm run build && node scripts/smoke.mjs",
+    "test:visual": "npm run build && node scripts/visual-regression.mjs",
+    "test:visual:update": "npm run build && node scripts/visual-regression.mjs --update"
+  },
+  "dependencies": {
+    "cannon-es": "^0.20.0",
+    "peerjs": "^1.5.5",
+    "postprocessing": "^6.36.0",
+    "three": "^0.172.0"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.4.0",
+    "vite": "^6.0.0"
+  }
+}

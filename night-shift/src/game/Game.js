@@ -86,6 +86,20 @@ export class Game {
       this.combat.spawnReinforcements();
     });
     this.bus.on('weapon:ammo', ({ mag, reserve }) => this.hud.setAmmo(mag, reserve));
+    this.bus.on('weapon:selected', ({ weapon }) => {
+      if (weapon?.hudName) this.hud.el.hint.textContent = `${weapon.hudName} ready · E swap · G gadget · X cycle gadget`;
+    });
+    this.bus.on('gadget:selected', ({ gadget, charges }) => {
+      if (gadget?.hudName) this.hud.el.hint.textContent = `${gadget.hudName} x${charges} · G deploy · X cycle`;
+    });
+    this.bus.on('gadget:empty', ({ gadget }) => {
+      this.hud.el.hint.textContent = `${gadget?.hudName ?? 'GADGET'} dry`;
+    });
+    this.bus.on('gadget:attentionSpike', ({ amount }) => {
+      this.attention.spikeLocal(amount ?? CONFIG.attention.distractionSpike);
+    });
+    this.bus.on('regroup:started', () => this.hud.banner('REGROUP', 2.4));
+    this.bus.on('regroup:reached', () => this.hud.banner('RESUPPLIED — PUSH', 1.8));
     this.bus.on('weapon:ads', (ads) => this.hud.setAds(ads));
     this.bus.on('economy:updated', (snap) => this.hud.setInvoice(snap.net));
     this.bus.on('player:distract', ({ kind }) => {
@@ -106,7 +120,7 @@ export class Game {
     this.bus.on('weapon:fired', (payload) => {
       this.economy.onShot();
       if (this.modes.isStealth) {
-        this.attention.spikeLocal(CONFIG.attention.shotSpike);
+        this.attention.spikeLocal(payload.attentionSpike ?? CONFIG.attention.shotSpike);
         this.modes.tripAlarm('gunfire');
       }
       this.combat.handleShot(payload);

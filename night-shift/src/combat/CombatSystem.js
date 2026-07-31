@@ -4,6 +4,9 @@ import { Hitscan, HITSCAN_LAYERS, getHitRoot, isEnemyObject, isPlayerObject } fr
 import { Decals } from './Decals.js';
 import { Ragdoll } from './Ragdoll.js';
 import { BreakableLights } from './BreakableLights.js';
+import { GadgetSystem } from '../gadgets/GadgetSystem.js';
+import { ENEMY_TYPE_IDS, getEnemyType, pickEnemyType } from './EnemyTypes.js';
+import { RegroupDirector } from './RegroupDirector.js';
 
 const _playerPos = new THREE.Vector3();
 const _targetPos = new THREE.Vector3();
@@ -18,6 +21,8 @@ const _spawnBox = new THREE.Box3();
 const _objectBox = new THREE.Box3();
 const _hurtboxBase = new THREE.Vector3();
 const _hurtboxEye = new THREE.Vector3();
+const _enemyFacing = new THREE.Vector3();
+const _shieldOrigin = new THREE.Vector3();
 
 function vectorFrom(value, fallback, out) {
   if (value?.isVector3) return out.copy(value);
@@ -67,6 +72,8 @@ export class CombatSystem {
     this.decals = new Decals(scene);
     this.ragdoll = new Ragdoll(scene);
     this.breakableLights = new BreakableLights(scene, bus, audio, lights);
+    this.gadgets = new GadgetSystem(scene, bus, audio, lights, this);
+    this.regroup = new RegroupDirector(scene, bus);
     this.enemies = [];
     this.tracers = [];
     this.tracerPool = [];
@@ -78,7 +85,14 @@ export class CombatSystem {
     this.playerDowned = false;
     this._reinforcementWave = 0;
     this._secondWaveTimer = null;
+    this._weaponInventory = { allMagsEmpty: false, allAmmoEmpty: false };
     this._onGuardShot = (payload) => this.handleGuardShot(payload);
+    this._onGadgetUsed = (payload) => this.gadgets.use(payload);
+    this._onWeaponInventory = (payload = {}) => {
+      this._weaponInventory = payload;
+    };
+    this._onWeaponMelee = (payload) => this.handleMelee(payload);
+    this._onRegroupReached = (payload) => this._handleRegroupReached(payload);
 
     this.enemyRoot = new THREE.Group();
     this.enemyRoot.name = 'combat-reinforcements';
@@ -98,9 +112,25 @@ export class CombatSystem {
 
     this._createTracerPool();
     this.bus?.on?.('guard:shot', this._onGuardShot);
+    this.bus?.on?.('gadget:used', this._onGadgetUsed);
+    this.bus?.on?.('weapon:inventory', this._onWeaponInventory);
+    this.bus?.on?.('weapon:melee', this._onWeaponMelee);
+    this.bus?.on?.('regroup:reached', this._onRegroupReached);
   }
 
   handleShot(payload = {}) {
+    const pelletCount = Math.max(1, Math.min(12, Math.floor(payload.pellets ?? 1)));
+    if (pelletCount <= 1) return this._handleSingleShot(payload);
+
+    let firstHit = null;
+    for (let i = 0; i < pelletCount; i += 1) {
+      const hit = this._handleSingleShot({ ...payload, pelletIndex: i, pellets: 1 });
+      if (!firstHit && hit) firstHit = snapshotHit(hit);
+    }
+    return firstHit;
+  }
+
+  _handleSingleShot(payload = {}) {
     const hit = this.hitscan.fire(payload);
     if (!hit) return null;
 
@@ -116,6 +146,27 @@ export class CombatSystem {
 
     this.decals.spawn(hit);
     return hit;
+  }
+
+  handleMelee(payload = {}) {
+    vectorFrom(payload.origin, new THREE.Vector3(), _shotStart);
+    vectorFrom(payload.direction, new THREE.Vector3(0, 0, -1), _dir).normalize();
+    const range = payload.range ?? 1.6;
+    const hit = this.hitscan.fire(
+      {
+        origin: _shotStart,
+        direction: _dir,
+        spread: 0,
+        ads: true,
+        maxDistance: range,
+      },
+      { layers: [HITSCAN_LAYERS.enemies], maxDistance: range }
+    );
+    if (hit && isEnemyObject(hit.object)) {
+      this._applyEnemyHit(hit, { ...payload, melee: true, damage: payload.damage ?? 28 });
+      return hit;
+    }
+    return null;
   }
 
   handleGuardShot(payload = {}) {
@@ -171,10 +222,11 @@ export class CombatSystem {
     const spawned = [];
     const reservedPositions = [];
     for (let i = 0; i < count; i++) {
-      const position = this._spawnPoint(i, reservedPositions);
+      const typeDef = getEnemyType(options.type ?? pickEnemyType(wave).id);
+      const position = this._spawnPoint(i, reservedPositions, typeDef);
       if (!position) continue;
       reservedPositions.push(position.clone());
-      const enemy = this._createEnemy(position, wave);
+      const enemy = this._createEnemy(position, wave, typeDef);
       this.enemies.push(enemy);
       spawned.push(enemy.root);
     }
@@ -192,16 +244,25 @@ export class CombatSystem {
     this.ragdoll.update(dt);
     this.decals.update(dt);
     this.breakableLights.update(dt);
+    this.gadgets.update(dt);
     this._ensurePlayerHurtbox(player);
     this._updateReinforcementWaves(dt, mode);
     this._updateEnemies(dt, player, mode);
+    this.regroup.update(dt, {
+      mode,
+      player,
+      playerHealth: this.playerHealth,
+      allMagsEmpty: this._weaponInventory?.allMagsEmpty === true || this._weaponInventory?.allAmmoEmpty === true,
+    });
     this._updateTracers(dt);
   }
 
   registerEnemy(object, options = {}) {
     if (!object || this.enemies.some((enemy) => enemy.root === object)) return object;
+    const typeDef = getEnemyType(options.type ?? object.userData?.enemyType ?? ENEMY_TYPE_IDS.rusher);
     object.userData.team ??= 'enemy';
     object.userData.isGuard ??= true;
+    object.userData.enemyType ??= typeDef.id;
     object.userData.maxHealth ??= options.maxHealth ?? 100;
     object.userData.health ??= object.userData.maxHealth;
     object.traverse?.((child) => {
@@ -214,11 +275,16 @@ export class CombatSystem {
     this.enemies.push({
       root: object,
       alive: true,
-      speed: options.speed ?? CONFIG.guard.chaseSpeed * 0.82,
+      type: typeDef.id,
+      def: typeDef,
+      speed: options.speed ?? CONFIG.guard.chaseSpeed * 0.82 * typeDef.speedMul,
       shootCooldown: 0.4 + Math.random() * 0.8,
       burstRemaining: 0,
       burstSeed: options.burstSeed ?? Math.random() * 10,
       strafePhase: options.strafePhase ?? Math.random() * Math.PI * 2,
+      stunTimer: 0,
+      repairTimer: 0,
+      repairTarget: null,
       external: true,
     });
     return object;
@@ -241,8 +307,17 @@ export class CombatSystem {
       origin: payload.origin,
       direction: hit.direction ?? payload.direction,
       ads: payload.ads === true,
+      melee: payload.melee === true,
+      weaponId: payload.weaponId,
       system: this,
     };
+
+    if (this._shieldBlocks(enemy, event)) {
+      this.decals.spawn(hit, { size: 0.11, spark: true, surface: 'metal' });
+      this.audio?.play?.('hit');
+      this.bus?.emit?.('combat:enemyBlocked', { enemy, hit, weaponId: payload.weaponId });
+      return;
+    }
 
     let handled = false;
     let result = null;
@@ -276,6 +351,76 @@ export class CombatSystem {
     enemy.userData.health ??= enemy.userData.maxHealth;
     enemy.userData.health -= damage;
     if (enemy.userData.health <= 0) this._killEnemy(enemy, hit, event.direction);
+  }
+
+  damageEnemyDirect(enemy, amount = 0, options = {}) {
+    const root = this._enemyRootFor(enemy) ?? enemy;
+    if (!root || root.userData?.dead || root.userData?.incapacitated) return false;
+    root.userData.maxHealth ??= 100;
+    root.userData.health ??= root.userData.maxHealth;
+    root.userData.health -= Math.max(0, amount);
+    this.bus?.emit?.('combat:enemyHit', { enemy: root, damage: amount, source: options.source ?? null });
+    if (root.userData.health <= 0) {
+      this._killEnemy(root, null, options.direction ?? new THREE.Vector3(0, 0, -1));
+      return true;
+    }
+    return false;
+  }
+
+  stunEnemy(enemy, seconds = 1.5, options = {}) {
+    const root = this._enemyRootFor(enemy) ?? enemy;
+    if (!root || root.userData?.dead || root.userData?.incapacitated) return false;
+    root.userData.combatStunTimer = Math.max(root.userData.combatStunTimer ?? 0, seconds);
+    if (options.source) root.userData.combatStunSource = options.source;
+    const tracked = this.enemies.find((entry) => entry.root === root);
+    if (tracked) tracked.stunTimer = Math.max(tracked.stunTimer ?? 0, seconds);
+    this.bus?.emit?.('combat:enemyStunned', { enemy: root, seconds, source: options.source ?? null });
+    return true;
+  }
+
+  incapacitateEnemy(enemy, options = {}) {
+    const root = this._enemyRootFor(enemy) ?? enemy;
+    if (!root || root.userData?.dead || root.userData?.incapacitated) return false;
+    root.userData.incapacitated = true;
+    root.userData.bodyState = 'incapacitated';
+    root.userData.incapacitatedSeconds = options.seconds ?? 0;
+    const tracked = this.enemies.find((entry) => entry.root === root);
+    if (tracked) tracked.alive = false;
+    this.hitscan.unregisterCandidate(root);
+
+    const controller = options.controller ?? this._guardControllerFor(root, root);
+    if (controller) {
+      controller.alive = false;
+      controller.state = 'incapacitated';
+      controller.mesh?.traverse?.((child) => {
+        child.userData.incapacitated = true;
+        if (child.isLight) child.intensity = 0;
+      });
+    }
+
+    this.ragdoll.spawnRagdoll(root, options.direction ?? new THREE.Vector3(0, 0, -1));
+    this.bus?.emit?.('combat:enemyIncapacitated', { enemy: root, source: options.source ?? null });
+    this.bus?.emit?.('guard:incapacitated', { guard: controller ?? root, source: options.source ?? null });
+    return true;
+  }
+
+  _shieldBlocks(enemy, event) {
+    if (enemy?.userData?.enemyType !== ENEMY_TYPE_IDS.shield || event.melee) return false;
+    if ((enemy.userData.combatStunTimer ?? 0) > 0) return false;
+    if (!event.origin?.isVector3) return true;
+
+    _enemyFacing.copy(enemy.userData.combatFacingToPlayer ?? new THREE.Vector3(0, 0, 1));
+    _enemyFacing.y = 0;
+    if (_enemyFacing.lengthSq() <= 0.001) return true;
+    _enemyFacing.normalize();
+
+    _shieldOrigin.subVectors(event.origin, enemy.position);
+    _shieldOrigin.y = 0;
+    if (_shieldOrigin.lengthSq() <= 0.001) return true;
+    _shieldOrigin.normalize();
+
+    const def = getEnemyType(ENEMY_TYPE_IDS.shield);
+    return _enemyFacing.dot(_shieldOrigin) >= def.frontalBlockCos;
   }
 
   _killEnemy(enemy, hit, direction, options = {}) {
@@ -331,6 +476,39 @@ export class CombatSystem {
     return event;
   }
 
+  _handleRegroupReached(payload = {}) {
+    this.bus?.emit?.('weapon:resupply', payload);
+    if (Number.isFinite(payload.minHealth) && this.playerHealth > 0 && this.playerHealth < payload.minHealth) {
+      this.playerHealth = Math.min(this.playerMaxHealth, payload.minHealth);
+      this.playerDowned = false;
+      this.bus?.emit?.('player:health', {
+        hp: this.playerHealth,
+        maxHp: this.playerMaxHealth,
+        damage: 0,
+        source: 'regroup',
+      });
+    }
+    this._clearLocalPressure(payload.safeRoom, payload.pressureReliefSeconds ?? 4.5);
+    this.bus?.emit?.('combat:regroupComplete', payload);
+  }
+
+  _clearLocalPressure(safeRoom, seconds = 4.5) {
+    vectorFrom(safeRoom, this.regroup?.safeRoom ?? new THREE.Vector3(), _targetPos);
+    for (const enemy of this.enemies) {
+      if (!enemy.alive || enemy.root.userData.dead) continue;
+      enemy.shootCooldown = Math.max(enemy.shootCooldown, seconds);
+      enemy.stunTimer = Math.max(enemy.stunTimer ?? 0, Math.min(1.4, seconds * 0.35));
+      _dir.subVectors(enemy.root.position, _targetPos);
+      _dir.y = 0;
+      const distance = _dir.length();
+      if (distance > 0.001 && distance < 8) {
+        _dir.multiplyScalar(1 / distance);
+        enemy.root.position.addScaledVector(_dir, 2.2);
+        this._clampToRoom(enemy.root.position);
+      }
+    }
+  }
+
   _enemyRootFor(object) {
     if (object?.userData?.hitRoot) return object.userData.hitRoot;
     return getHitRoot(
@@ -364,24 +542,37 @@ export class CombatSystem {
     return typeof enemy.userData?.onHit === 'function' ? enemy.userData.onHit : null;
   }
 
-  _createEnemy(position, wave = 1) {
+  _createEnemy(position, wave = 1, typeDef = getEnemyType(ENEMY_TYPE_IDS.rusher)) {
     const root = new THREE.Group();
-    root.name = 'hostile-reinforcement';
+    root.name = `${typeDef.id}-reinforcement`;
     root.position.copy(position);
     root.userData.team = 'enemy';
     root.userData.isGuard = true;
     root.userData.combatEnemy = true;
-    root.userData.maxHealth = 100;
-    root.userData.health = 100;
+    root.userData.enemyType = typeDef.id;
+    root.userData.maxHealth = typeDef.health;
+    root.userData.health = typeDef.health;
     root.userData.combatLayer = HITSCAN_LAYERS.enemies;
 
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.78, 4, 8), this.enemyMaterial);
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+      color: typeDef.color,
+      roughness: 0.72,
+      metalness: 0.04,
+    });
+    const accentMaterial = new THREE.MeshStandardMaterial({
+      color: typeDef.accent,
+      roughness: 0.68,
+      metalness: 0.05,
+      emissive: typeDef.id === ENEMY_TYPE_IDS.tech ? typeDef.accent : 0x000000,
+      emissiveIntensity: typeDef.id === ENEMY_TYPE_IDS.tech ? 0.35 : 0,
+    });
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(typeDef.radius, 0.78, 4, 8), bodyMaterial);
     body.name = 'hostile-body';
     body.position.y = 1.02;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 8), this.enemyAccentMaterial);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(typeDef.radius * 0.82, 12, 8), accentMaterial);
     head.name = 'hostile-head';
     head.position.y = 1.62;
-    const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.58, 0.13), this.enemyMaterial);
+    const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.58, 0.13), bodyMaterial);
     leftArm.name = 'hostile-left-arm';
     leftArm.position.set(-0.31, 1.03, 0);
     const rightArm = leftArm.clone();
@@ -398,25 +589,65 @@ export class CombatSystem {
       root.add(part);
     }
 
+    if (typeDef.id === ENEMY_TYPE_IDS.shield) {
+      const shield = new THREE.Mesh(new THREE.BoxGeometry(0.72, 1.05, 0.08), accentMaterial);
+      shield.name = 'hostile-frontal-shield';
+      shield.position.set(0, 1.08, -0.26);
+      shield.userData.team = 'enemy';
+      shield.userData.isGuard = true;
+      shield.userData.hitRoot = root;
+      shield.userData.combatLayer = HITSCAN_LAYERS.enemies;
+      root.add(shield);
+    } else if (typeDef.id === ENEMY_TYPE_IDS.tech) {
+      const pack = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.52, 0.12), accentMaterial);
+      pack.name = 'hostile-tech-repair-pack';
+      pack.position.set(0, 1.08, 0.24);
+      pack.userData.team = 'enemy';
+      pack.userData.isGuard = true;
+      pack.userData.hitRoot = root;
+      pack.userData.combatLayer = HITSCAN_LAYERS.enemies;
+      root.add(pack);
+    } else if (typeDef.id === ENEMY_TYPE_IDS.sniper) {
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.72, 12), accentMaterial);
+      barrel.name = 'hostile-sniper-long-barrel';
+      barrel.rotation.x = Math.PI * 0.5;
+      barrel.position.set(0.1, 1.28, -0.42);
+      barrel.userData.team = 'enemy';
+      barrel.userData.isGuard = true;
+      barrel.userData.hitRoot = root;
+      barrel.userData.combatLayer = HITSCAN_LAYERS.enemies;
+      root.add(barrel);
+    }
+
     this.enemyRoot.add(root);
     this.hitscan.registerCandidate(root, HITSCAN_LAYERS.enemies);
     const burstSeed = Math.random() * 10;
     return {
       root,
       alive: true,
-      speed: CONFIG.guard.chaseSpeed * (0.76 + Math.random() * 0.18),
+      type: typeDef.id,
+      def: typeDef,
+      speed: CONFIG.guard.chaseSpeed * typeDef.speedMul * (0.92 + Math.random() * 0.16),
       shootCooldown: 0.65 + Math.random() * 0.9,
       burstRemaining: 0,
       burstSeed,
       strafePhase: burstSeed,
+      stunTimer: 0,
+      repairTimer: 0,
+      repairTarget: null,
       wave,
     };
   }
 
-  _spawnPoint(index, reservedPositions = []) {
+  _spawnPoint(index, reservedPositions = [], typeDef = null) {
     const halfW = CONFIG.room.width / 2 - 1.4;
     const halfD = CONFIG.room.depth / 2 - 1.4;
-    const anchors = [
+    const anchors = typeDef?.prefersDarkCorner ? [
+      [-halfW, -halfD],
+      [halfW, -halfD],
+      [-halfW, halfD],
+      [halfW, halfD],
+    ] : [
       [-halfW * 0.55, -halfD],
       [halfW * 0.55, -halfD],
       [-halfW, -halfD * 0.35],
@@ -449,28 +680,54 @@ export class CombatSystem {
     playerPosition(player, _playerPos);
 
     for (const enemy of this.enemies) {
-      if (!enemy.alive || enemy.root.userData.dead) continue;
+      if (!enemy.alive || enemy.root.userData.dead || enemy.root.userData.incapacitated) continue;
       const root = enemy.root;
       root.userData.health ??= root.userData.maxHealth ?? 100;
+      const def = enemy.def ?? getEnemyType(enemy.type);
+      enemy.def = def;
+
+      if ((enemy.stunTimer ?? 0) > 0 || (root.userData.combatStunTimer ?? 0) > 0) {
+        enemy.stunTimer = Math.max(0, (enemy.stunTimer ?? root.userData.combatStunTimer ?? 0) - dt);
+        root.userData.combatStunTimer = enemy.stunTimer;
+        groundLookAt(root, _playerPos);
+        continue;
+      }
 
       _dir.subVectors(_playerPos, root.position);
       _dir.y = 0;
       const distance = _dir.length();
       if (distance > 0.001) _dir.multiplyScalar(1 / distance);
+      root.userData.combatFacingToPlayer = _dir.clone();
 
       if (mode === 'loud') {
-        if (distance > 1.45) {
+        if (def.id === ENEMY_TYPE_IDS.tech) this._updateTech(enemy, dt);
+
+        const desiredRange = def.desiredRange ?? 5;
+        const stopRange = def.stopRange ?? 2.5;
+        let advance = 0;
+        if (distance > desiredRange) {
+          advance = 1;
+        } else if (distance < stopRange && def.id !== ENEMY_TYPE_IDS.rusher) {
+          advance = -0.55;
+        } else if (def.id === ENEMY_TYPE_IDS.rusher && distance > stopRange) {
+          advance = 0.75;
+        }
+
+        if (Math.abs(advance) > 0.01 && distance > 0.001) {
           _right.set(_dir.z, 0, -_dir.x);
-          const strafe = Math.sin((enemy.strafePhase += dt * (1.25 + (enemy.burstSeed % 0.45)))) * 0.34;
-          root.position.addScaledVector(_dir, enemy.speed * dt);
+          const strafeAmp = def.id === ENEMY_TYPE_IDS.sniper ? 0.08 : def.id === ENEMY_TYPE_IDS.shield ? 0.18 : 0.34;
+          const strafe = Math.sin((enemy.strafePhase += dt * (1.25 + (enemy.burstSeed % 0.45)))) * strafeAmp;
+          root.position.addScaledVector(_dir, enemy.speed * advance * dt);
           root.position.addScaledVector(_right, enemy.speed * strafe * dt);
           this._clampToRoom(root.position);
         }
         groundLookAt(root, _playerPos);
         enemy.shootCooldown -= dt;
-        if (distance < 22 && enemy.shootCooldown <= 0) {
+        const shootRange = def.id === ENEMY_TYPE_IDS.sniper ? 32 : 22;
+        if (distance < shootRange && enemy.shootCooldown <= 0) {
           if (enemy.burstRemaining <= 0) {
-            enemy.burstRemaining = 2 + Math.floor(Math.abs(Math.sin(enemy.burstSeed)) * 2);
+            const [minBurst, maxBurst] = def.burst ?? [2, 3];
+            enemy.burstRemaining = minBurst + Math.floor(Math.random() * (maxBurst - minBurst + 1));
           }
           this._enemyShoot(enemy, _playerPos, distance);
           enemy.burstRemaining -= 1;
@@ -478,7 +735,8 @@ export class CombatSystem {
             enemy.shootCooldown = 0.09 + Math.abs(Math.sin(enemy.burstSeed * 1.37)) * 0.055;
           } else {
             enemy.burstSeed += 1.731;
-            enemy.shootCooldown = 1.05 + Math.random() * 0.95;
+            const [minCooldown, maxCooldown] = def.cooldown ?? [1.05, 2.0];
+            enemy.shootCooldown = minCooldown + Math.random() * (maxCooldown - minCooldown);
           }
         }
       }
@@ -486,15 +744,16 @@ export class CombatSystem {
   }
 
   _enemyShoot(enemy, playerEye, distance) {
+    const def = enemy.def ?? getEnemyType(enemy.type);
     enemy.root.getWorldPosition(_shotStart);
     _shotStart.y += 1.45;
     _shotEnd.copy(playerEye);
     _dir.subVectors(_shotEnd, _shotStart).normalize();
-    const accuracy = this._enemyAccuracy(distance);
+    const accuracy = this._enemyAccuracy(distance, def);
     const spread = THREE.MathUtils.lerp(0.085, 0.012, accuracy) * (0.85 + Math.random() * 0.3);
     this._applyEnemySpread(_dir, spread);
 
-    const maxDistance = Math.min(28, distance + 1.5);
+    const maxDistance = def.id === ENEMY_TYPE_IDS.sniper ? Math.min(42, distance + 2.5) : Math.min(28, distance + 1.5);
     const hit = this.hitscan.fire(
       {
         origin: _shotStart,
@@ -510,7 +769,7 @@ export class CombatSystem {
       this._spawnTracer(_shotStart, hit.point, 0xff4f3f);
       this.audio?.play?.('shot');
       this._damagePlayerFromHit(hit, {
-        damage: Math.round(THREE.MathUtils.lerp(4, 8, accuracy)),
+        damage: Math.round((def.damage ?? 7) * THREE.MathUtils.lerp(0.82, 1.18, accuracy)),
         source: enemy.root,
         origin: _shotStart,
         direction: hit.direction ?? _dir,
@@ -568,9 +827,73 @@ export class CombatSystem {
     this.playerHurtbox.updateMatrixWorld(true);
   }
 
+  _updateTech(enemy, dt) {
+    const def = enemy.def ?? getEnemyType(ENEMY_TYPE_IDS.tech);
+    const target = enemy.repairTarget?.alive === false
+      ? enemy.repairTarget
+      : this._nearestBrokenLight(enemy.root.position, def.repairRadius ?? 3.4);
+    enemy.repairTarget = target;
+    if (!target) {
+      enemy.repairTimer = 0;
+      return;
+    }
+
+    const distance = target.position?.distanceTo?.(enemy.root.position) ?? Infinity;
+    if (distance > (def.repairRadius ?? 3.4)) {
+      enemy.repairTimer = 0;
+      return;
+    }
+
+    enemy.repairTimer += dt;
+    enemy.shootCooldown = Math.max(enemy.shootCooldown, 0.28);
+    if (enemy.repairTimer >= (def.repairSeconds ?? 3.2)) {
+      this._repairLight(target);
+      enemy.repairTimer = 0;
+      enemy.repairTarget = null;
+      enemy.shootCooldown = Math.max(enemy.shootCooldown, 0.75);
+    }
+  }
+
+  _nearestBrokenLight(position, radius) {
+    let best = null;
+    let bestDist = Infinity;
+    for (const record of this.lights?.list ?? []) {
+      if (!record || record.alive !== false || !record.position) continue;
+      const distance = record.position.distanceTo(position);
+      if (distance <= radius && distance < bestDist) {
+        best = record;
+        bestDist = distance;
+      }
+    }
+    return best;
+  }
+
+  _repairLight(record) {
+    if (!record || record.alive) return false;
+    record.alive = true;
+    if (record.light) {
+      record.light.visible = true;
+      record.light.intensity = record._baseLightIntensity ?? record.light.intensity ?? 1;
+    }
+    if (record.pool) record.pool.visible = true;
+    const bulbs = record.bulbs ?? [record.bulb];
+    for (const bulb of bulbs) {
+      if (!bulb) continue;
+      bulb.userData.breakableLight = true;
+      bulb.userData.breakableLightBroken = false;
+      if (bulb.material?.emissiveIntensity !== undefined) {
+        bulb.material.emissiveIntensity = record._baseEmissiveIntensity ?? 1;
+      }
+    }
+    if (record.id !== undefined) this.breakableLights.broken.delete(String(record.id));
+    this.bus?.emit?.('light:repaired', { id: record.id, position: record.position?.clone?.() });
+    return true;
+  }
+
   _updateReinforcementWaves(dt, mode) {
     if (mode !== 'loud' || this._secondWaveTimer === null || this._reinforcementWave >= 2) return;
-    this._secondWaveTimer -= dt;
+    const techPressure = this._livingTypeCount(ENEMY_TYPE_IDS.tech) > 0 ? 1.7 : 1;
+    this._secondWaveTimer -= dt * techPressure;
     if (this._secondWaveTimer <= 0 && this._waveDefeated(1)) {
       const spawned = this.spawnReinforcements({ wave: 2 });
       if (spawned.length > 0) this._secondWaveTimer = null;
@@ -582,8 +905,13 @@ export class CombatSystem {
     return !this.enemies.some((enemy) => enemy.wave === wave && enemy.alive && !enemy.root.userData.dead);
   }
 
-  _enemyAccuracy(distance) {
-    return THREE.MathUtils.clamp(1 - Math.max(0, distance - 4) / 20, 0.18, 0.92);
+  _livingTypeCount(type) {
+    return this.enemies.filter((enemy) => enemy.type === type && enemy.alive && !enemy.root.userData.dead).length;
+  }
+
+  _enemyAccuracy(distance, def = null) {
+    const bonus = def?.accuracyBonus ?? 0;
+    return THREE.MathUtils.clamp(1 - Math.max(0, distance - 4) / 20 + bonus, 0.12, 0.96);
   }
 
   _applyEnemySpread(direction, spread) {

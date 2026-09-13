@@ -7,6 +7,7 @@ Version 0.4 · Target: playable 25-minute site, not a galaxy
 Changelog 0.2: pre-graybox closures folded in (§17 and the lines they touch).
 Changelog 0.3: art direction locked (§18); §14 marketing line reconciled to it.
 Changelog 0.4: title retired; army cap set; production posture rewritten for a solo budget (§15).
+Changelog 0.5: phase 0 is a 2D GameMaker prototype of the trade (§15). Third person is deferred to the 3D port.
 
 -----
 
@@ -58,7 +59,7 @@ Working names (replace later):
 
 ## 5. Camera and control
 
-**Default:** third person, over-the-shoulder, Warden on foot.
+**Default:** third person, over-the-shoulder, Warden on foot. *(3D target. The GameMaker prototype in §15 uses a tight top-down ground camera instead. The pillar is presence, not the angle.)*
 
 **Command overlay:** hold a shoulder button. Camera lifts to a top-down tactical view *centered on you*. World time runs at **50%**. Not paused. Not 10%. Fifty.
 
@@ -264,7 +265,21 @@ The human owns: camera feel, radial latency, pathing at the wall you just built,
 
 Order of work: a third-person controller you can already ship, then the overlay, then units colliding with a wall you placed, then buildings. Do not start buildings before the controller. Do not start the galaxy. Start the canyon.
 
-Engine: the one you already know. Do not learn a crowd framework for this. The army cap (§6) makes Unreal, Unity, or Godot all viable.
+Engine: the one you already know. That is GameMaker, so phase 0 is a **2D top-down prototype in GameMaker**. It tests the only thing that matters: does commanding cost your body, and does fighting cost your economy. Every pillar in §3 survives in 2D. Only the camera angle in §5 does not, and the camera angle is not a pillar.
+
+**GameMaker prototype scope (phase 0, 4–8 weeks of nights):**
+
+- Ground view: tight top-down camera locked to the Warden, twin-stick or mouse-aim, melee plus one gun.
+- Overlay: hold a key, camera zooms out to the site, game speed 50%, click-drag select and right-click orders. Release to drop back.
+- Radial: four ground orders on a held key.
+- Walk-to-build: pads on a grid, stand on one, hold to confirm a ghost.
+- 20–40 units as simple agents. Grid pathing (mp_grid) around placed buildings.
+- One nest, waves on a threat meter, one extract pad.
+- Art: colored rectangles and circles with one icon each. Nothing else until the switch works.
+
+If the switch is fun as rectangles, it will be fun in 3D. If it is not fun as rectangles, no engine fixes it.
+
+**After the prototype passes:** port to **Godot 4**. It is free, its scene-and-node model is the closest thing to GameMaker's objects-and-rooms, GDScript reads like GML with Python spelling, and 3D at 20–40 units is well within it. Unreal is a stage-two decision if a team appears. Do not start the port before the prototype passes its gate.
 
 If the experiment is good, the studio conversation happens with someone else's money. If it is bad, you spent evenings, not a house.
 

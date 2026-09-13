@@ -1,6 +1,7 @@
 # Feasibility and Timeline
 
 Version 1.0 · 2026-09-13 · Companion to `GDD.md`
+Changelog 1.1: phase 0 is a GameMaker 2D prototype; Godot is the 3D port target.
 Changelog 1.0: rewritten around a sub-$20k experiment as the primary path. The three-person studio plan is retained as a conditional second stage. Title retired. Dates now follow the slice gate instead of the other way round.
 
 -----
@@ -31,7 +32,9 @@ The whole company until the switch is fun.
 
 **Drop, later or forever:** crowd-scale unit counts, second faction, doctrines, Keel meta, co-op, a Steam page this month, a counter-trailer for BlizzCon.
 
-**Army cap:** 20–40 units. Basic engine agents. No crowd framework. Unreal, Unity, or Godot are all viable at this count. Use the engine you already know.
+**Army cap:** 20–40 units. Basic engine agents. No crowd framework.
+
+**Engine reality:** the only engine known is GameMaker. So phase 0 is a 2D top-down prototype in GameMaker (GDD §15). It answers the switch question at zero learning cost. The 3D port goes to Godot 4 after the prototype passes, because Godot is free and the closest in feel to GameMaker. Learning Godot is a phase of its own and is budgeted below. Unreal is deferred to stage two.
 
 ### What the money buys
 
@@ -48,16 +51,19 @@ There is no honest $50k version of "4–6 sites, second faction, Next Fest, Earl
 
 | Phase | Effort | Deliverable | Gate |
 |---|---|---|---|
-| 0. Controller | First month, nights | A third-person controller you could ship. Nothing else. | If you cannot already do this, this is the whole month. Do not start buildings. |
-| 1. Switch | Nights, months 1–3 | Overlay at 50% time, radial, walk-to-build, 20–40 units, one wall, one nest | Overlay ≤150 ms, first order ≤1.0 s, testers switch views unprompted |
-| 2. Look | Nights, months 4–6 | Airline-plastic world, canyon scale, rain, creep, radio VO pass | Testers can name the minute they lost (GDD §13) |
-| 3. Clip | Week after phase 2 | 40 seconds: overlay → wall → core almost dying | Wishlist after this clip, never before |
+| 0. GameMaker prototype | Nights, weeks 1–8 | 2D top-down: Warden, 50% overlay, radial, walk-to-build, 20–40 rectangle units, one wall, one nest, extract | Overlay ≤150 ms (trivial in 2D), first order ≤1.0 s, testers switch views unprompted, testers can name the minute they lost |
+| 1. Godot controller | Nights, months 3–4 | Learn Godot 4 by building only a third-person controller you could ship. Nothing else. | Controller feels good to a stranger. Do not start buildings. |
+| 2. Godot port | Nights, months 4–7 | The prototype's systems in 3D, 20–40 units, pads on a grid, one canyon | Same gate as phase 0, now in 3D |
+| 3. Look | Nights, months 7–9 | Airline-plastic world (GDD §18), canyon scale, rain, creep, radio VO pass | Testers name the minute they lost, again |
+| 4. Clip | Week after phase 3 | 40 seconds: overlay → wall → core almost dying | Wishlist after this clip, never before |
+
+The GameMaker phase is the cheapest possible kill switch. If the trade is not fun as rectangles, stop at week 8 with nothing lost but evenings. If it is, the Godot learning curve is paid for by knowing exactly what to build.
 
 If the switch fails at month 3, you spent evenings, not a house.
 
 ### Spend the next dollar on, in order
 
-1. The engine you already know. Do not learn a crowd stack for this.
+1. Nothing. GameMaker is already owned. Godot is free. Do not buy an engine or a crowd stack.
 2. A cheap mic and one radio VO pass.
 3. One contractor week, only after *you* have units colliding with a wall you placed.
 4. The $100 Steam fee, only after testers name the minute they lost.
@@ -107,12 +113,14 @@ AI fills mesh volume. It does not sit in the third chair. If one of the three is
 | Gate | Fail looks like |
 |---|---|
 | Day 30 | No name, or the teaser looks like Blizzard concept art |
-| Month 3 | Overlay >150 ms, or testers have to be told to switch |
+| Week 8 | Rectangle prototype: testers have to be told to switch, or cannot name the minute they lost |
+| Month 4 | Godot controller does not feel good to a stranger |
+| Month 7 | 3D port fails the gate the 2D prototype passed |
 | Month 6 | Testers cannot name the minute they lost |
 | Month 9 | No publisher *and* no path to self-fund the next year |
 | Month 18 | Second faction made the army wallpaper or the hero a QTE |
 
-Gates 1–3 belong to stage one. Gates 4–5 exist only if stage two starts.
+Gates through month 7 belong to stage one. Gates 4–5 exist only if stage two starts.
 
 -----
 
@@ -120,7 +128,9 @@ Gates 1–3 belong to stage one. Gates 4–5 exist only if stage two starts.
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| View-switch feel is bad | Medium | Fatal | Phase 1 gate. Prototype the overlay before units exist. |
+| View-switch feel is bad | Medium | Fatal | Phase 0 gate, in 2D, before any 3D work. |
+| Learning Godot eats the calendar | High | Medium | Phase 1 is only a controller. Nothing else is allowed until it feels good. The prototype already says what to build. |
+| 2D prototype passes, 3D port fails | Medium | High | Phase 2 gate. If 3D breaks the trade, ship the 2D game. A 2D action-RTS with the trade intact is still the product. |
 | Pathing at player-built walls | High | High | Pads on a grid. Nav rebuild on placement. The one contractor burst goes here if you cannot solve it. |
 | Threat tuning produces one dominant style | Medium | High | Log base footprint at loss, time in overlay, style split. Pillar 2 is measurable. |
 | Steam page before the verb | High | High | No page until the clip exists. |

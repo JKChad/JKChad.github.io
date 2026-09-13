@@ -1,8 +1,9 @@
 # DOMINION: FRIENDSLOP
 
 **Game Design Document — Slice First**
-Version 0.2 · Target: playable 25-minute site, not a galaxy
+Version 0.3 · Target: playable 25-minute site, not a galaxy
 Changelog 0.2: pre-graybox closures folded in (§17 and the lines they touch).
+Changelog 0.3: art direction locked (§18); §14 marketing line reconciled to it.
 
 -----
 
@@ -36,7 +37,7 @@ The joke in the title is the marketing. The verb in the sentence is the game.
 
 Cheap human empire. You are not a chosen one. You are the officer who walked out of the drop-pod because the last officer died. Radio propaganda loves you until you fail. The planet does not.
 
-Visual: industrial, muddy, fluorescent interiors, torn flags, armor that looks maintained by a quartermaster who hates you.
+Visual: industrial, muddy, fluorescent interiors, torn flags, armor that looks maintained by a quartermaster who hates you. Full art direction in §18.
 
 IP: original nouns. No hydralisks, no CMC, no Dominion as Blizzard spells it. Steal the *feeling*.
 
@@ -240,7 +241,7 @@ If they say "I didn't know what to press," the control layer failed, not the pla
 
 ## 14. Tone and presentation
 
-Marketing can stay FriendSlop: helmet renders, 2030 energy, "early in development," waitlist.
+Marketing can stay FriendSlop: helmet renders in the §18 cheap-cabin style, 2030 energy, "early in development," waitlist. Any render that looks like the BlizzCon 2026 teaser is rejected (§18).
 
 The build cannot. No seasonal pass on the slice. No empty open world. No cinematic that the game cannot play.
 
@@ -284,3 +285,38 @@ If the slice is good, the subtitle becomes a scar. If the slice is bad, the titl
 - "I died and the army did not get to finish it."
 
 This is the week-one graybox spec. §12 remains the freeze list; §17 constrains how those items behave.
+
+-----
+
+## 18. Art direction (locked)
+
+The reference is not Flight Simulator. It is the cheap-cabin look: *Uh Oh Airlines*, *Dear Passengers*, *Lethal Company*, *R.E.P.O.* Readable toys under bad fluorescent lights. Silhouettes you can parse from overlay. Physics that can be funny without the systems being funny. That is what "FriendSlop" already promised on the box.
+
+**Rules**
+
+- **Camera distance wins.** Overlay must read a Levy from a Maul at a glance. Big heads, big guns, big pads, no grit soup.
+- **Materials are institutional.** Scratched plastic, painted steel, wet mud, yellow safety stripes. One accent color per faction: Compact amber, Broodveil violet, Choir cold white. Not PBR hero shots.
+- **Warden is a mascot in armor**, not a photogrammetry operator. If the helmet does not read as an icon at 64 pixels, the overlay is dead.
+- **Animation can be a little wrong.** Landings that thump. Buildings that unfold like airport stairs. Swarm that is too many legs. Comedy is in the body, not the writing.
+- **Blood and scale stay real.** Waves should still scare. Silly materials, serious numbers. *TABS* with stakes, not *TABS*.
+
+**The one upgrade worth paying for**
+
+Keep the toy-like characters and buildings. Spend the extra fidelity on **space and weather**: canyon scale, rain, creep that looks like it grew on the map, drop-pod lighting. World grim. Units slightly stupid-looking. That split avoids both "AI slop cinematic" and "this is a party game."
+
+**Slice palette**
+
+| Thing       | Look                                                          |
+|-------------|---------------------------------------------------------------|
+| Warden      | Amber visor, dented cheap plate, backpack radio               |
+| Levy        | Hardhat army                                                  |
+| Pike / Maul | Same suit family, weapon is the silhouette                    |
+| Broodveil   | Wet purple mass, too many joints                              |
+| Buildings   | Site-office architecture, cones, floodlights                  |
+| Keel drop   | Budget airliner bones: ribbed hull, bad seats, cargo rollers  |
+
+**Rule for AI art**
+
+Generate helmets and stills in this style on purpose. If a render looks like the BlizzCon 2026 teaser, reject it. That look is the thing being mocked and the thing that cannot be afforded in animation.
+
+Silly enough to ship with generated meshes. Heavy enough that losing the core still feels like a crash, not a punchline.

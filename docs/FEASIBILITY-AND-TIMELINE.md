@@ -1,6 +1,7 @@
 # DOMINION: FRIENDSLOP — Feasibility and Timeline
 
-Version 0.1 · 2026-09-13 · Companion to `DOMINION-FRIENDSLOP-GDD.md`
+Version 0.2 · 2026-09-13 · Companion to `DOMINION-FRIENDSLOP-GDD.md`
+Changelog 0.2: engine and cost rationale reconciled to the locked art direction (GDD §18).
 
 -----
 
@@ -29,7 +30,7 @@ Recommended shape: a three-person core, Unreal Engine 5, Steam page inside 30 da
 
 | When | Beat | Asset needed |
 |---|---|---|
-| Within 2 weeks | Steam page + 30-second teaser | Helmet render, logo, three graybox shots, name locked |
+| Within 2 weeks | Steam page + 30-second teaser | Helmet render in the §18 cheap-cabin style (not a BlizzCon-teaser lookalike), logo, three graybox shots, name locked |
 | Feb 2027 Next Fest | Optional. Only if the slice already passes its own gate. | Rough demo of the canyon |
 | June 2027 Next Fest | Primary demo beat | Polished 25-minute slice |
 | BlizzCon 2027 (likely Sep/Oct) | Counter-trailer with real gameplay the week they show theirs | EA-quality build |
@@ -59,7 +60,7 @@ Takeaway: hybrid genre, solo developer, open scope is a five-year project with n
 Reasons:
 
 - Mass Entity (ECS) is built in. Community frameworks show 250 skeletal-mesh units plus 600+ instanced meshes at 60 fps, with multiplayer and Gameplay Ability System already wired. The slice needs a few dozen units. Early Access needs maybe 150 on screen. That is comfortably inside the envelope.
-- The marketing joke depends on the "2030 helmet render" look. Unreal produces that look with the least art spend.
+- The locked art direction (GDD §18) is toy-like characters under grim space and weather. The character side is cheap in any engine. The world side (canyon scale, rain, volumetric drop-pod lighting, creep that reads as grown) is where Unreal's Lumen and Niagara save art spend. Renders that look like the BlizzCon teaser are rejected by the GDD, so the engine is not chosen for hero-shot fidelity.
 - Third-person character movement, animation, and camera are the most mature out of the box, and camera feel is one of the human-owned items in GDD §15.
 
 Costs to accept:
@@ -70,7 +71,7 @@ Costs to accept:
 
 Alternatives:
 
-- **Unity** with DOTS/ECS is viable and cheaper to staff. Choose it if the team is already Unity-native. It will not produce the helmet render on the same budget.
+- **Unity** with DOTS/ECS is viable and cheaper to staff, and the §18 toy look narrows the gap. Choose it if the team is already Unity-native. Weather and lighting will cost more engineer time to reach the same world grimness.
 - **Godot 4** is not recommended here. 3D and large-unit-count tooling still trail, and the asset ecosystem for third-person action is thin.
 
 -----
@@ -91,7 +92,7 @@ Salary ranges from 2026 indie cost surveys: a 3–5 person team runs $150k–$40
 |---|---|
 | Gameplay engineer (C++/Blueprint) | Warden controller, camera, overlay, radial, Mass units, pathing at player-built walls |
 | Technical designer / second engineer | Economy, threat, AI waves, level (the canyon), build pads, tuning |
-| Art generalist | Warden, 4 units, 5 buildings, canyon set, UI, trailer stills |
+| Art generalist | Warden, 4 units, 5 buildings, canyon set, UI, trailer stills. Toy-look characters (§18) let generated meshes carry the slice; hand time goes to silhouettes at overlay distance and to space and weather. |
 
 Contract: audio (per-milestone), VO scratch, a producer for the publisher pitch if needed.
 

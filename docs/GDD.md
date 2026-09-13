@@ -1,9 +1,12 @@
-# DOMINION: FRIENDSLOP
+# [WORKING TITLE] — FRIENDSLOP
 
 **Game Design Document — Slice First**
-Version 0.3 · Target: playable 25-minute site, not a galaxy
+Version 0.4 · Target: playable 25-minute site, not a galaxy
+
+**Title status:** *Dominion* is retired (StarCraft faction name, Blizzard C&D history, and a registered games trademark for the card game). Shortlist that steps on neither: **KEEL**, **WARDEN SITE**, **COMPACT**, **ON THE LINE**, **FOOTPRINT**, **SCRAP AND SUPPLY**. Pick an ugly short word. Press may say StarCraft. We never do. FriendSlop stays as studio name or subtitle only if we can live with it on a store page.
 Changelog 0.2: pre-graybox closures folded in (§17 and the lines they touch).
 Changelog 0.3: art direction locked (§18); §14 marketing line reconciled to it.
+Changelog 0.4: title retired; army cap set; production posture rewritten for a solo budget (§15).
 
 -----
 
@@ -104,6 +107,8 @@ Does the work you cannot be present for. Second lanes, chokepoints, harvesting e
 
 If the Warden can stand in one place and win the site, the army is wallpaper. Fix counters before adding units.
 
+**Army cap:** 20–40 units on screen. *They Are Billions* small, not *StarCraft*. Basic engine agents are enough at this count; no crowd stack required.
+
 -----
 
 ## 7. Economy (slice)
@@ -197,7 +202,7 @@ Ship this or ship nothing.
 - Bunk (supply)
 - Turret
 
-**Units (4)**
+**Units (4, capped at 20–40 on screen)**
 
 - Levy (cheap chaff)
 - Pike (anti-swarm cone)
@@ -218,7 +223,7 @@ Ship this or ship nothing.
 - Radial
 - Overlay production bar
 
-**Explicitly out of slice:** second faction, doctrines, skill tree, ship meta, co-op, story, pause-on-wave, more than one gun.
+**Explicitly out of slice:** second faction, doctrines, skill tree, ship meta, co-op, story, pause-on-wave, more than one gun, crowd-scale unit counts, a Steam page, a counter-trailer.
 
 **Pass metric:** testers switch views at least a few times per minute without being told, and can point to the minute they lost.
 
@@ -251,19 +256,25 @@ Voice: quartermaster radio, not chosen-one narration.
 
 ## 15. Production posture
 
-AI is for meshes, graybox, boilerplate, VO scratch, trailer stills.
+This is an experiment run by one person on nights and weekends until the switch is proven fun. It is not a studio.
 
-Humans (even one) own: camera feel, radial latency, pathing at the wall you just built, and the week you delete a system because the trade stopped hurting.
+AI is for meshes, graybox, boilerplate, VO scratch, stills. AI does not sit in a design chair.
 
-Do not start the galaxy. Start the canyon.
+The human owns: camera feel, radial latency, pathing at the wall you just built, and the week you delete a system because the trade stopped hurting.
+
+Order of work: a third-person controller you can already ship, then the overlay, then units colliding with a wall you placed, then buildings. Do not start buildings before the controller. Do not start the galaxy. Start the canyon.
+
+Engine: the one you already know. Do not learn a crowd framework for this. The army cap (§6) makes Unreal, Unity, or Godot all viable.
+
+If the experiment is good, the studio conversation happens with someone else's money. If it is bad, you spent evenings, not a house.
 
 -----
 
 ## 16. Title, still
 
-**DOMINION: FRIENDSLOP**
+**[WORKING TITLE]: FRIENDSLOP**
 
-If the slice is good, the subtitle becomes a scar. If the slice is bad, the title was honest.
+See the title status at the top. If the slice is good, the subtitle becomes a scar. If the slice is bad, the subtitle was honest.
 
 -----
 

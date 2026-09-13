@@ -1,7 +1,8 @@
 # DOMINION: FRIENDSLOP
 
 **Game Design Document — Slice First**
-Version 0.1 · Target: playable 25-minute site, not a galaxy
+Version 0.2 · Target: playable 25-minute site, not a galaxy
+Changelog 0.2: pre-graybox closures folded in (§17 and the lines they touch).
 
 -----
 
@@ -64,13 +65,15 @@ Working names (replace later):
 - Hold
 - Follow
 - Focus target
-- Fall back
+- Fall back (to the last flare; no flare this site → to Core)
 
 That is the entire hip language. Fine control (waypoints, production queues, rally) lives in overlay.
 
 **Building:** walk to a valid pad, hold interact, ghost appears, confirm. Cancel by walking off. No god-click construction.
 
-**Hard rule:** if testers cannot switch views without thinking, stop adding systems.
+**Overlay budget:** overlay up in **≤150 ms**. First order (produce, rally, or group) issuable within **1.0 s** of the button.
+
+**Hard rule:** if testers cannot switch views without thinking, or the overlay budget is missed in playtest, stop adding systems until it hits.
 
 -----
 
@@ -126,6 +129,8 @@ Threat is a single visible meter.
 
 **Falls with:** destroyed nests, quiet periods, pulling buildings down.
 
+**Floor:** demolished footprint keeps its threat contribution for **60 seconds**. Decay is a delayed slope, not an instant refund. You cannot dismantle your way out of a wave you already paid for.
+
 High threat = more vectors, denser swarms, Choir elites mixed in.
 Low threat + small base = Space Marine-shaped run.
 High threat + wide base = StarCraft-shaped run with you as the hero unit.
@@ -143,6 +148,8 @@ One landing.
 3. Commit: quiet kill-the-nests, or loud expand.
 4. Objective (one per slice mission): hold two relays **or** crack the hive **or** reach Tech 2 and extract.
 5. Extract: stand the beacon. Army can die. If the Warden dies, site failed. Retreat to orbit with inventory on the body only.
+
+**Core loss:** ends production and all queued units. Existing army stays. Site is not auto-failed. Extract remains possible on foot. Warden death = fail. Core death = cripple, not fail.
 
 No checkpoint in the middle. Die or leave.
 
@@ -179,7 +186,7 @@ Ship this or ship nothing.
 **Warden**
 
 - Move, sprint, melee, one gun
-- Abilities (4): slam, grapple-to-pad, banner (small army buff aura), flare (marks a rally)
+- Abilities (4): slam, grapple-to-owned-pad, banner (small army buff aura), flare (rally primitive; Fall back goes here)
 
 **Buildings (5)**
 
@@ -194,7 +201,7 @@ Ship this or ship nothing.
 - Levy (cheap chaff)
 - Pike (anti-swarm cone)
 - Maul (anti-elite, slow)
-- Drone (repair / build assist, no combat)
+- Drone (repair only + finish Warden-confirmed ghosts, no combat)
 
 **Site**
 
@@ -224,6 +231,8 @@ Players should be able to say one of these:
 - "I stayed in overlay and the elite ate me."
 - "I built too wide and threat drowned the pads."
 - "I stayed quiet too long and the clock called the Choir." (post-slice)
+- "The core died and I had to walk the beacon out."
+- "I died and the army did not get to finish it."
 
 If they say "I didn't know what to press," the control layer failed, not the player.
 
@@ -254,3 +263,24 @@ Do not start the galaxy. Start the canyon.
 **DOMINION: FRIENDSLOP**
 
 If the slice is good, the subtitle becomes a scar. If the slice is bad, the title was honest.
+
+-----
+
+## 17. Closures (pre-graybox)
+
+**Grapple-to-pad.** Grapple is legal only onto a pad the Compact already owns (Core, built building, or claimed relay). It is a reposition across *your* footprint, not a teleport to a ghost. If that still makes walking cheap, cut grapple from the slice. Placement cost stays on foot.
+
+**Drone.** Drone repairs and escorts. It does not start buildings. A ghost exists only after the Warden confirms it by standing on the pad. Drone may finish a confirmed ghost if the Warden leaves. That is assist, not god-click.
+
+**Fall back.** Fall back destination is the last flare. No flare this site → fall back to Core. Flare is the only hip rally primitive. Overlay can still set per-group rallies.
+
+**Overlay budget.** Overlay must be up in **≤150 ms**. First order (produce, rally, or group) must be issuable within **1.0 s** of the button. Miss either number in playtest and you stop adding systems until it hits.
+
+**Threat floor.** Demolished footprint keeps its threat contribution for **60 seconds**. Decay is a delayed slope, not an instant refund. Cheese is pulling the base down *during* the delay while the wave is already paid for.
+
+**Core stake.** Core loss ends production and all queued units. Existing army stays. Site is not auto-failed. Extract remains possible on foot. Warden death still fails the site. Two failure sentences testers can use:
+
+- "The core died and I had to walk the beacon out."
+- "I died and the army did not get to finish it."
+
+This is the week-one graybox spec. §12 remains the freeze list; §17 constrains how those items behave.

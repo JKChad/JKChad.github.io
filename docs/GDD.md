@@ -1,13 +1,14 @@
 # [WORKING TITLE] — FRIENDSLOP
 
 **Game Design Document — Slice First**
-Version 0.4 · Target: playable 25-minute site, not a galaxy
+Version 0.6 · Target: playable 25-minute site, not a galaxy
 
 **Title status:** *Dominion* is retired (StarCraft faction name, Blizzard C&D history, and a registered games trademark for the card game). Shortlist that steps on neither: **KEEL**, **WARDEN SITE**, **COMPACT**, **ON THE LINE**, **FOOTPRINT**, **SCRAP AND SUPPLY**. Pick an ugly short word. Press may say StarCraft. We never do. FriendSlop stays as studio name or subtitle only if we can live with it on a store page.
 Changelog 0.2: pre-graybox closures folded in (§17 and the lines they touch).
 Changelog 0.3: art direction locked (§18); §14 marketing line reconciled to it.
 Changelog 0.4: title retired; army cap set; production posture rewritten for a solo budget (§15).
 Changelog 0.5: phase 0 is a 2D GameMaker prototype of the trade (§15). Third person is deferred to the 3D port.
+Changelog 0.6: economy stays real but slow and bursty, not Brütal Legend's real-time-everything (§5, §7); combat verb splits fodder-vs-elite (§10); death reframed as a per-site retry, not a per-encounter one (§9, §11).
 
 -----
 
@@ -80,13 +81,15 @@ That is the entire hip language. Fine control (waypoints, production queues, ral
 
 **Hard rule:** if testers cannot switch views without thinking, or the overlay budget is missed in playtest, stop adding systems until it hits.
 
+**Why this exists:** *Brütal Legend*'s command layer ran at full real time with no device that pulled the player out of the fight to think. Ours does: the 50% overlay is the one thing that game never had. Protect it above every other system in this document. If the economy in §7 ever grows complex enough that a player must live in overlay instead of dip into it, this device has failed and the fix is to slow the economy down, not to speed up the UI.
+
 -----
 
 ## 6. The two halves
 
 ### Warden (you)
 
-By far the strongest single unit. Melee and close guns. Four abilities in the slice (see §12).
+Not a living god. The only unit that can turn the tide, not the only one that can die. Melee and close guns. Four abilities in the slice (see §12).
 
 **Commander-only problems:**
 
@@ -126,6 +129,8 @@ Harvest is not automatic from orbit. A node is a thing on the ground. An extract
 
 Production queues run while you are on the line. That is the point.
 
+**Pace, not scope, is the safeguard.** Keep the meme lane: a real base, real nodes, a real queue, real counters. What must stay small is how often it needs a visit. Build and production times are long relative to how often a player dips into overlay, a glance every minute or two, not a treadmill every fifteen seconds. That is the difference between this and *Brütal Legend*'s command layer, which asked for continuous attention at full speed with nothing to think with. Tripwire for playtest: if testers are pulling up overlay more than roughly once every 20–30 seconds just to stay even, the economy is running too hot. Slow it down. Do not add a faster way to check it.
+
 -----
 
 ## 8. Threat
@@ -160,6 +165,8 @@ One landing.
 
 No checkpoint in the middle. Die or leave.
 
+**Death is per-site, not per-encounter.** This is not Dark Souls' bonfire rhythm, where a retry is cheap and thirty seconds away. A failed site costs the whole attempt. That is deliberate: dying often is expected, especially against Choir elites early on, but what carries the sting is failing the same site repeatedly with nothing to show for it. §11 is what prevents that. Treat this as *Hades* or *Returnal*'s shape, not Souls' shape: no save-scumming inside a run, but a failed run still feeds the next one.
+
 Length target: **25 minutes** for the slice. 45 is the cap after the slice works.
 
 -----
@@ -172,6 +179,13 @@ Length target: **25 minutes** for the slice. 45 is the cap after the slice works
 
 Mixed spawn only after each faction is readable alone. First playable: Broodveil only.
 
+**The combat verb splits by faction, not just the numbers.**
+
+- **Against Broodveil, the Warden is Dynasty Warriors.** Wide arcs, crowd clear, no punishment for greed. This is the power fantasy that has to hold up on its own even if a player never opens overlay, the same way *Brütal Legend*'s action half worked fine in isolation. If mowing through chaff does not feel great with zero commands issued, fix that before touching anything else.
+- **Against Choir, the Warden is Dark Souls.** Real telegraphs, a real cost for a bad swing, death that comes from a greedy read, not from being outnumbered. Not a living god (§6): an elite should be able to kill the Warden the way a boss does, in a handful of hits, if the tell is ignored.
+
+Same character, same moveset. The enemy decides which game it is.
+
 -----
 
 ## 11. Progression (after the slice, not in it)
@@ -183,6 +197,8 @@ Do not build this until the switch is fun.
 - **Keel:** ship loadout changes the drop prefab (extra bay, pre-placed turret, extra scrap).
 
 Galaxy is a mission select with flavor. It is not a second game.
+
+**This is also the system that makes §9's death rule feel fair.** A failed site should never be a wasted 25 minutes. A tree point, a doctrine unlock, or a Keel upgrade earned on a failed attempt is what turns "I died and lost the site" into "I died and I'm better equipped for the next one," the *Hades* trick. Do not build this before the slice is fun, but when it is built, it exists to carry the sting of §9, not to pad playtime.
 
 -----
 
@@ -226,7 +242,7 @@ Ship this or ship nothing.
 
 **Explicitly out of slice:** second faction, doctrines, skill tree, ship meta, co-op, story, pause-on-wave, more than one gun, crowd-scale unit counts, a Steam page, a counter-trailer.
 
-**Pass metric:** testers switch views at least a few times per minute without being told, and can point to the minute they lost.
+**Pass metric:** testers switch views at least a few times per minute without being told, and can point to the minute they lost. If they are instead ducking into overlay every 15–20 seconds just to keep the economy from stalling, that is the §7 tripwire firing: slow the economy, do not add tooling.
 
 -----
 
